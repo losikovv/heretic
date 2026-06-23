@@ -1,12 +1,10 @@
 import argparse
-import html
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from roster_builder_core import HereticBuilder
-from roster_builder_page import PAGE
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -50,12 +48,7 @@ class Handler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
         try:
             if parsed.path == "/":
-                body = PAGE.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                self.send_json({"ok": True, "message": "Roster UI has been removed. Use the /api endpoints."})
             elif parsed.path == "/api/bootstrap":
                 self.send_json(self.heretic_builder.bootstrap())
             elif parsed.path == "/api/detachments":
@@ -63,9 +56,12 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/datasheets":
                 self.send_json(self.heretic_builder.datasheets(
                     params.get("factionId", [""])[0],
-                    params.get("detachmentId", [""])[0],
+                    params.get("detachmentIds", [params.get("detachmentId", [""])[0]])[0],
                     params.get("q", [""])[0],
+                    params.get("allyType", ["native"])[0],
                 ))
+            elif parsed.path == "/api/allied-factions":
+                self.send_json(self.heretic_builder.allied_factions(params.get("rosterId", [""])[0]))
             elif parsed.path == "/api/roster":
                 self.send_json(self.heretic_builder.roster(params.get("id", [""])[0]))
             elif parsed.path == "/api/unit":
@@ -82,12 +78,47 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(self.heretic_builder.create_roster(payload))
             elif self.path == "/api/roster/delete":
                 self.send_json(self.heretic_builder.delete_roster(payload["id"]))
+            elif self.path == "/api/roster/detachments":
+                self.send_json(self.heretic_builder.set_roster_detachments(
+                    payload["rosterId"],
+                    payload.get("detachmentIds", []),
+                ))
             elif self.path == "/api/unit/add":
-                self.send_json(self.heretic_builder.add_unit(payload["rosterId"], payload["datasheetId"]))
+                self.send_json(self.heretic_builder.add_unit(
+                    payload["rosterId"],
+                    payload["datasheetId"],
+                    payload.get("allyType", "native"),
+                ))
             elif self.path == "/api/unit/delete":
                 self.send_json(self.heretic_builder.delete_unit(payload["id"]))
             elif self.path == "/api/unit/composition":
                 self.send_json(self.heretic_builder.set_composition(payload["rosterUnitId"], payload["compositionId"]))
+            elif self.path == "/api/allegiance":
+                self.send_json(self.heretic_builder.set_allegiance_ability(
+                    payload["rosterUnitId"],
+                    payload["allegianceAbilityId"],
+                    bool(payload.get("enabled")),
+                ))
+            elif self.path == "/api/unit-enhancement":
+                self.send_json(self.heretic_builder.set_unit_enhancement(
+                    payload["rosterUnitId"],
+                    payload["enhancementId"],
+                    bool(payload.get("enabled")),
+                ))
+            elif self.path == "/api/model-enhancement":
+                self.send_json(self.heretic_builder.set_miniature_enhancement(
+                    payload["rosterUnitMiniatureId"],
+                    payload["enhancementId"],
+                    bool(payload.get("enabled")),
+                ))
+            elif self.path == "/api/attached/create":
+                self.send_json(self.heretic_builder.create_attached_unit(
+                    payload["bodyguardUnitId"],
+                    payload["attachedUnitId"],
+                    payload.get("attachedType", "leader"),
+                ))
+            elif self.path == "/api/attached/delete":
+                self.send_json(self.heretic_builder.delete_attached_unit(payload["id"]))
             elif self.path == "/api/wargear":
                 self.send_json(self.heretic_builder.set_wargear(
                     payload["rosterUnitMiniatureId"],
@@ -123,7 +154,7 @@ def main():
     Handler.heretic_builder = HereticBuilder(db_path)
     server, port = find_port(args.host, args.port)
     print(f"HereticBuilder: http://{args.host}:{port}", flush=True)
-    print(f"Database: {html.escape(str(db_path))}", flush=True)
+    print(f"Database: {db_path}", flush=True)
     server.serve_forever()
 
 
