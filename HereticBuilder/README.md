@@ -2,7 +2,7 @@
 
 Minimal local tools for exploring and editing the HereticSheets SQLite snapshot.
 
-The database stays in the parent project at `../data/heretic_sheets.sqlite`.
+The database stays in the parent project at `../data/heretic_db.sqlite`.
 
 ## Visual Viewer
 

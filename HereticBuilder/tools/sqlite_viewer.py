@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB = PROJECT_ROOT / "data" / "heretic_sheets.sqlite"
+DEFAULT_DB = PROJECT_ROOT / "data" / "heretic_db.sqlite"
 MAX_LIMIT = 500
 
 

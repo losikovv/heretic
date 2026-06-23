@@ -8,7 +8,7 @@ from roster_builder_core import HereticBuilder
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB = PROJECT_ROOT / "data" / "heretic_sheets.sqlite"
+DEFAULT_DB = PROJECT_ROOT / "data" / "heretic_db.sqlite"
 
 
 def find_port(host, start):
