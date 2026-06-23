@@ -32,6 +32,7 @@ def dedupe_counters(counters):
 
 def select_matching_composition(compositions, miniatures):
     current = {item["miniatureId"]: item["count"] for item in miniatures}
+    matches = []
     for comp in compositions:
         models = comp["models"]
         model_ids = {item["miniatureId"] for item in models}
@@ -44,8 +45,11 @@ def select_matching_composition(compositions, miniatures):
                 ok = False
                 break
         if ok:
-            return comp
-    return None
+            matches.append(comp)
+    if not matches:
+        return None
+    available = [comp for comp in matches if comp.get("available", True)]
+    return available[0] if available else matches[0]
 
 
 def composition_label(models):

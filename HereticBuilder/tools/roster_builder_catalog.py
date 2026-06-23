@@ -67,6 +67,59 @@ class RosterCatalogMixin:
               )
             """.format(placeholders=placeholders)
             params.extend(detachment_ids)
+        composition_faction_ids = [faction_id]
+        if ally_type and ally_type != "native":
+            with self.connect(readonly=True) as conn:
+                parent_ids = [
+                    row["factionKeywordId"] for row in conn.execute(
+                        """
+                        select factionKeywordId
+                        from allied_faction_parent_faction_keyword
+                        where alliedFactionId = ?
+                        order by factionKeywordId
+                        """,
+                        [ally_type],
+                    )
+                ]
+            if parent_ids:
+                composition_faction_ids = parent_ids
+        composition_faction_placeholders = ",".join("?" for _ in composition_faction_ids)
+        composition_detachment = ""
+        if detachment_ids:
+            placeholders = ",".join("?" for _ in detachment_ids)
+            composition_detachment = """
+                 or exists (
+                   select 1 from unit_composition_required_detachment ucrd
+                   where ucrd.unitCompositionId = uc.id
+                     and ucrd.detachmentId in ({placeholders})
+                 )
+            """.format(placeholders=placeholders)
+        composition = f"""
+          and exists (
+            select 1
+            from unit_composition uc
+            where uc.datasheetId = d.id
+              and (
+                not exists (
+                  select 1 from unit_composition_required_faction_keyword ucrfk
+                  where ucrfk.unitCompositionId = uc.id
+                )
+                or exists (
+                  select 1 from unit_composition_required_faction_keyword ucrfk
+                  where ucrfk.unitCompositionId = uc.id
+                    and ucrfk.factionKeywordId in ({composition_faction_placeholders})
+                )
+              )
+              and (
+                not exists (
+                  select 1 from unit_composition_required_detachment ucrd
+                  where ucrd.unitCompositionId = uc.id
+                )
+                {composition_detachment}
+              )
+          )
+        """
+        params.extend([*composition_faction_ids, *detachment_ids])
         search = ""
         if query:
             search = "and d.name like ?"
@@ -93,6 +146,7 @@ class RosterCatalogMixin:
             where 1 = 1
               {source_where}
               {excluded}
+              {composition}
               {search}
             order by lower(d.name)
             limit 250
@@ -102,6 +156,9 @@ class RosterCatalogMixin:
         data = []
         for row in rows:
             item = dict_row(row)
+            composition = self.default_composition(conn, item["id"], composition_faction_ids, detachment_ids)
+            if composition:
+                item["points"] = composition["points"]
             item["unitComposition"] = plain_text(item["unitComposition"])[:220]
             data.append(item)
         return {"datasheets": data}

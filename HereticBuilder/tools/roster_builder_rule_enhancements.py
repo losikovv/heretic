@@ -116,7 +116,12 @@ class RosterEnhancementRulesMixin:
             }
             if keyword_ids and not keyword_ids.issubset(target_keyword_ids):
                 continue
-            if faction_ids and roster.get("factionKeywordId") not in faction_ids:
+            allowed_faction_ids = set(self.composition_faction_keyword_ids(
+                conn,
+                roster.get("factionKeywordId"),
+                unit.get("allyType", "native"),
+            ))
+            if faction_ids and not allowed_faction_ids.intersection(faction_ids):
                 continue
             return True
         return False

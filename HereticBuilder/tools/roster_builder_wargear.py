@@ -71,14 +71,15 @@ class WargearValidationMixin:
 
     def selected_unit_wargear_item_counts(self, conn, roster_unit_id):
         return Counter({
-            row["wargearItemId"]: row["count"] for row in conn.execute(
+            row["wargearItemKey"]: row["count"] for row in conn.execute(
                 """
-                select wo.wargearItemId, sum(ruwo.count) as count
+                select lower(wi.name) as wargearItemKey, sum(ruwo.count) as count
                 from roster_unit_wargear_option ruwo
                 join wargear_option wo on wo.id = ruwo.wargearOptionId
+                join wargear_item wi on wi.id = wo.wargearItemId
                 where ruwo.rosterUnitId = ?
                   and ruwo.count > 0
-                group by wo.wargearItemId
+                group by lower(wi.name)
                 """,
                 [roster_unit_id],
             )
@@ -86,14 +87,15 @@ class WargearValidationMixin:
 
     def selected_miniature_wargear_item_counts(self, conn, roster_unit_miniature_id):
         return Counter({
-            row["wargearItemId"]: row["count"] for row in conn.execute(
+            row["wargearItemKey"]: row["count"] for row in conn.execute(
                 """
-                select wo.wargearItemId, sum(rumwo.count) as count
+                select lower(wi.name) as wargearItemKey, sum(rumwo.count) as count
                 from roster_unit_miniature_wargear_option rumwo
                 join wargear_option wo on wo.id = rumwo.wargearOptionId
+                join wargear_item wi on wi.id = wo.wargearItemId
                 where rumwo.rosterUnitMiniatureId = ?
                   and rumwo.count > 0
-                group by wo.wargearItemId
+                group by lower(wi.name)
                 """,
                 [roster_unit_miniature_id],
             )
@@ -103,17 +105,18 @@ class WargearValidationMixin:
         counts = self.selected_unit_wargear_item_counts(conn, roster_unit_id)
         for row in conn.execute(
             """
-            select wo.wargearItemId, sum(rumwo.count) as count
+            select lower(wi.name) as wargearItemKey, sum(rumwo.count) as count
             from roster_unit_miniature_wargear_option rumwo
             join roster_unit_miniature rum on rum.id = rumwo.rosterUnitMiniatureId
             join wargear_option wo on wo.id = rumwo.wargearOptionId
+            join wargear_item wi on wi.id = wo.wargearItemId
             where rum.rosterUnitId = ?
               and rumwo.count > 0
-            group by wo.wargearItemId
+            group by lower(wi.name)
             """,
             [roster_unit_id],
         ):
-            counts[row["wargearItemId"]] += row["count"]
+            counts[row["wargearItemKey"]] += row["count"]
         return +counts
 
     def selected_scope_wargear_item_counts(self, conn, unit, miniature_id):
@@ -178,11 +181,12 @@ class WargearValidationMixin:
 
     def loadout_choice_items(self, conn, table, id_column, choice_id):
         return Counter({
-            row["wargearItemId"]: row["count"] for row in conn.execute(
+            row["wargearItemKey"]: row["count"] for row in conn.execute(
                 f"""
-                select wargearItemId, count
-                from {table}
-                where {id_column} = ?
+                select lower(wi.name) as wargearItemKey, choice.count
+                from {table} choice
+                join wargear_item wi on wi.id = choice.wargearItemId
+                where choice.{id_column} = ?
                 """,
                 [choice_id],
             )

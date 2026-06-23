@@ -116,7 +116,10 @@ class RosterMutationMixin:
             )
             if ally_type and ally_type != "native":
                 conn.execute("update roster_unit set allyType = ? where id = ?", [ally_type, roster_unit_id])
-            composition = self.default_composition(conn, datasheet_id, roster["factionKeywordId"], detachment_ids)
+            composition_faction_ids = self.composition_faction_keyword_ids(conn, roster["factionKeywordId"], ally_type)
+            composition = self.default_composition(conn, datasheet_id, composition_faction_ids, detachment_ids)
+            if not composition:
+                raise ValueError("No legal unit composition is available for this roster")
             if composition:
                 self.apply_composition(conn, roster_unit_id, composition["id"])
         return {"id": roster_unit_id}
