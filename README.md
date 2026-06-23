@@ -6,6 +6,10 @@ Raw SQLite snapshot for HereticSheets builder research.
 
 - `data/heretic_sheets.sqlite` - source SQLite snapshot.
 
+## Projects
+
+- `HereticBuilder/` - local viewer and minimal roster builder.
+
 ## Verify
 
 ```bash
