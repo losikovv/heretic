@@ -1,25 +1,19 @@
 # HereticSheets
 
-Local viewer for exported Warhammer 40,000 datasheets across faction publications.
+Raw SQLite snapshot for HereticSheets builder research.
 
-## Run
+## Data
 
-```bash
-npm run dev
-```
+- `data/heretic_sheets.sqlite` - source SQLite snapshot.
 
-Then open:
-
-```text
-http://127.0.0.1:4173
-```
-
-The app is static and reads `data/factions/index.json`, then loads the selected publication JSON from `data/factions`.
-
-## Data Export
+## Verify
 
 ```bash
-python3 scripts/export_wh40k_factions.py
-```
+python3 - <<'PY'
+import sqlite3
 
-The exporter reuses the local Warhammer app SQLite database and writes faction-level JSON files into `data/factions`.
+with sqlite3.connect("data/heretic_sheets.sqlite") as conn:
+    print(conn.execute("pragma integrity_check").fetchone()[0])
+    print(conn.execute("select dataVersion from metadata").fetchone()[0])
+PY
+```
