@@ -20,6 +20,13 @@ class RosterAttachmentRulesMixin:
         by_attached = {}
         for row in rows:
             by_attached.setdefault(row["attachedUnitId"], []).append(dict_row(row))
+        attached_memberships = {}
+        for row in rows:
+            attached_memberships.setdefault(row["rosterUnitId"], set()).add(row["attachedUnitId"])
+        for roster_unit_id, attached_ids in attached_memberships.items():
+            if len(attached_ids) > 1:
+                name = next((row["name"] for row in rows if row["rosterUnitId"] == roster_unit_id), "Unit")
+                messages.append({"level": "error", "text": f"{name} is part of more than one attached unit."})
         detachment_ids = {item["id"] for item in detachments}
         for attached_id, members in by_attached.items():
             bodyguards = [item for item in members if item["attachmentType"] == "bodyguard"]

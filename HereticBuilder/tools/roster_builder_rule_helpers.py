@@ -1,6 +1,33 @@
 from roster_builder_utils import dict_row
 
 class RosterRuleHelpersMixin:
+    def faction_keyword_scope(self, conn, faction_keyword_id):
+        if not faction_keyword_id:
+            return []
+        scope = []
+        seen = set()
+        current_id = faction_keyword_id
+        while current_id and current_id not in seen:
+            seen.add(current_id)
+            scope.append(current_id)
+            row = conn.execute(
+                "select parentFactionKeywordId from faction_keyword where id = ?",
+                [current_id],
+            ).fetchone()
+            current_id = row["parentFactionKeywordId"] if row else None
+        return scope
+
+    def faction_keyword_scopes(self, conn, faction_keyword_ids):
+        scope = []
+        seen = set()
+        for faction_keyword_id in faction_keyword_ids or []:
+            for scoped_id in self.faction_keyword_scope(conn, faction_keyword_id):
+                if scoped_id in seen:
+                    continue
+                seen.add(scoped_id)
+                scope.append(scoped_id)
+        return scope
+
     def unit_keywords(self, conn, roster_unit_id, datasheet_id, roster=None, detachment_ids=None, allegiance_ability_ids=None):
         roster = roster or {}
         detachment_ids = set(detachment_ids or [])

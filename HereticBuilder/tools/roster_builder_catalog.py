@@ -35,7 +35,7 @@ class RosterCatalogMixin:
             "defaultBattleSizeId": default_size,
         }
 
-    def detachments(self, faction_id):
+    def detachments(self, faction_id, include_combat_patrol=False):
         with self.connect(readonly=True) as conn:
             rows = conn.execute(
                 """
@@ -47,9 +47,10 @@ class RosterCatalogMixin:
                 left join detachment_faction_detachment_points_cost dfdpc
                   on dfdpc.detachmentId = d.id and dfdpc.factionKeywordId = ?
                 where dfk.factionKeywordId = ?
+                  and (? or d.isCombatPatrol = 0)
                 order by d.isCombatPatrol, d.displayOrder, lower(d.name)
                 """,
-                [faction_id, faction_id],
+                [faction_id, faction_id, 1 if include_combat_patrol else 0],
             ).fetchall()
         return {"detachments": [dict_row(row) for row in rows]}
 
@@ -66,23 +67,19 @@ class RosterCatalogMixin:
                   and ded.detachmentId in ({placeholders})
               )
             """.format(placeholders=placeholders)
-            params.extend(detachment_ids)
-        composition_faction_ids = [faction_id]
-        if ally_type and ally_type != "native":
-            with self.connect(readonly=True) as conn:
-                parent_ids = [
-                    row["factionKeywordId"] for row in conn.execute(
-                        """
-                        select factionKeywordId
-                        from allied_faction_parent_faction_keyword
-                        where alliedFactionId = ?
-                        order by factionKeywordId
-                        """,
-                        [ally_type],
-                    )
-                ]
-            if parent_ids:
-                composition_faction_ids = parent_ids
+        faction_excluded = ""
+        if not ally_type or ally_type == "native":
+            faction_excluded = """
+              and not exists (
+                select 1 from faction_keyword_excluded_datasheet fked
+                where fked.datasheetId = d.id
+                  and fked.factionKeywordId = ?
+              )
+            """
+        with self.connect(readonly=True) as conn:
+            composition_faction_ids = self.composition_faction_keyword_ids(conn, faction_id, ally_type)
+        if not composition_faction_ids:
+            composition_faction_ids = [faction_id or ""]
         composition_faction_placeholders = ",".join("?" for _ in composition_faction_ids)
         composition_detachment = ""
         if detachment_ids:
@@ -119,21 +116,26 @@ class RosterCatalogMixin:
               )
           )
         """
-        params.extend([*composition_faction_ids, *detachment_ids])
         search = ""
         if query:
             search = "and d.name like ?"
-            params.append(f"%{query}%")
         if ally_type and ally_type != "native":
             source_join = "join allied_faction_datasheet afd on afd.datasheetId = d.id and afd.alliedFactionId = ?"
             source_where = ""
-            params = [ally_type, *params]
+            params = [ally_type]
         else:
             source_join = "join datasheet_faction_keyword dfk on dfk.datasheetId = d.id"
-            source_where = "and dfk.factionKeywordId = ?"
-            params = [faction_id, *params]
+            source_placeholders = ",".join("?" for _ in composition_faction_ids)
+            source_where = f"and dfk.factionKeywordId in ({source_placeholders})"
+            params = [*composition_faction_ids]
+        params.extend(detachment_ids)
+        if faction_excluded:
+            params.append(faction_id)
+        params.extend([*composition_faction_ids, *detachment_ids])
+        if query:
+            params.append(f"%{query}%")
         sql = f"""
-            select d.id, d.name, d.baseSize, d.unitComposition,
+            select distinct d.id, d.name, d.baseSize, d.unitComposition,
                    coalesce((
                      select uc.points
                      from unit_composition uc
@@ -146,6 +148,7 @@ class RosterCatalogMixin:
             where 1 = 1
               {source_where}
               {excluded}
+              {faction_excluded}
               {composition}
               {search}
             order by lower(d.name)

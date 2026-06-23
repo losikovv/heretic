@@ -1,3 +1,6 @@
+from roster_builder_utils import dict_row
+
+
 class RosterEnhancementRulesMixin:
     def validate_enhancements(self, conn, roster, units, messages):
         detachment_ids = set(self.roster_detachment_ids(conn, roster["id"]))
@@ -121,6 +124,7 @@ class RosterEnhancementRulesMixin:
                 roster.get("factionKeywordId"),
                 unit.get("allyType", "native"),
             ))
+            allowed_faction_ids.update(unit.get("factionKeywordIds", []))
             if faction_ids and not allowed_faction_ids.intersection(faction_ids):
                 continue
             return True

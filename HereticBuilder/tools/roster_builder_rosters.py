@@ -348,6 +348,17 @@ class RosterMutationMixin:
             attached = conn.execute("select rosterId from roster_unit where id = ?", [attached_unit_id]).fetchone()
             if not bodyguard or not attached or bodyguard["rosterId"] != attached["rosterId"]:
                 raise ValueError("Attached units must be in the same roster")
+            existing = conn.execute(
+                """
+                select 1
+                from roster_attached_unit_roster_unit
+                where rosterUnitId in (?, ?)
+                limit 1
+                """,
+                [bodyguard_unit_id, attached_unit_id],
+            ).fetchone()
+            if existing:
+                raise ValueError("Unit is already part of an attached unit")
             conn.execute("insert into roster_attached_unit (id, rosterId) values (?, ?)", [attached_id, bodyguard["rosterId"]])
             conn.execute(
                 """

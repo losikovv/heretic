@@ -54,17 +54,19 @@ class RosterRulesMixin(
         duplicate_limit = roster.get("duplicateUnitLimit") or 3
         counts = {}
         first_by_datasheet = {}
+        roster_faction_scope = self.faction_keyword_scope(conn, roster["factionKeywordId"])
+        roster_faction_placeholders = ",".join("?" for _ in roster_faction_scope)
         for unit in units:
             counts[unit["datasheetId"]] = counts.get(unit["datasheetId"], 0) + 1
             first_by_datasheet.setdefault(unit["datasheetId"], unit)
             if unit.get("allyType", "native") == "native":
                 allowed = conn.execute(
-                    """
+                    f"""
                     select 1
                     from datasheet_faction_keyword
-                    where datasheetId = ? and factionKeywordId = ?
+                    where datasheetId = ? and factionKeywordId in ({roster_faction_placeholders})
                     """,
-                    [unit["datasheetId"], roster["factionKeywordId"]],
+                    [unit["datasheetId"], *roster_faction_scope],
                 ).fetchone()
                 if not allowed:
                     messages.append({"level": "error", "text": f"{unit['name']} is not native to {roster['factionName']}."})

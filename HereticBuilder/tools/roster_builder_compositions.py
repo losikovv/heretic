@@ -29,8 +29,8 @@ class RosterCompositionMixin:
                 )
             ]
             if parent_ids:
-                return parent_ids
-        return [roster_faction_keyword_id] if roster_faction_keyword_id else []
+                return self.faction_keyword_scopes(conn, parent_ids)
+        return self.faction_keyword_scope(conn, roster_faction_keyword_id)
 
     def compositions(self, conn, datasheet_id, roster=None, detachment_ids=None):
         rows = conn.execute(
@@ -85,6 +85,36 @@ class RosterCompositionMixin:
         if comp.get("requiredDetachmentIds") and not set(comp["requiredDetachmentIds"]).intersection(detachment_ids):
             return False
         return True
+
+    def datasheet_points_step_for_unit(self, conn, roster_id, roster_unit_id, datasheet_id):
+        if not roster_id:
+            return 0
+        step = conn.execute(
+            """
+            select stepAt, stepPoints
+            from datasheet_points_step
+            where datasheetId = ?
+            """,
+            [datasheet_id],
+        ).fetchone()
+        if not step:
+            return 0
+        same_datasheet_ids = [
+            row["id"] for row in conn.execute(
+                """
+                select id
+                from roster_unit
+                where rosterId = ? and datasheetId = ?
+                order by id
+                """,
+                [roster_id, datasheet_id],
+            )
+        ]
+        try:
+            position = same_datasheet_ids.index(roster_unit_id) + 1
+        except ValueError:
+            return 0
+        return step["stepPoints"] if position >= step["stepAt"] else 0
 
     def apply_composition(self, conn, roster_unit_id, composition_id):
         unit = conn.execute("select datasheetId from roster_unit where id = ?", [roster_unit_id]).fetchone()
@@ -356,6 +386,7 @@ class RosterCompositionMixin:
         compositions = self.compositions(conn, unit["datasheetId"], {"factionKeywordId": composition_faction_ids}, detachment_ids)
         selected = select_matching_composition(compositions, miniatures)
         composition_points = selected["points"] if selected else (compositions[0]["points"] if compositions else 0)
+        points_step = self.datasheet_points_step_for_unit(conn, roster.get("id"), unit["id"], unit["datasheetId"])
         wargear_points = (conn.execute(
             """
             select coalesce(sum(rumwo.count * wo.points), 0)
@@ -406,7 +437,8 @@ class RosterCompositionMixin:
             "datasheetId": unit["datasheetId"],
             "name": unit["name"],
             "allyType": unit.get("allyType", "native"),
-            "points": composition_points + wargear_points + enhancement_points,
+            "points": composition_points + points_step + wargear_points + enhancement_points,
+            "datasheetPointsStep": points_step,
             "modelCount": model_count,
             "maxModelCount": datasheet["maxModelCount"] if datasheet else None,
             "isSuccessorChapter": bool(datasheet["isSuccessorChapter"]) if datasheet else False,
