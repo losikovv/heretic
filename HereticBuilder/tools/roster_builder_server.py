@@ -1,9 +1,10 @@
 import argparse
+import csv
 import html
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from roster_builder_core import HereticBuilder
 
@@ -11,6 +12,8 @@ from roster_builder_core import HereticBuilder
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = PROJECT_ROOT / "data" / "heretic_db.sqlite"
 HERETIC_BUILDER_ROOT = Path(__file__).resolve().parents[1]
+FACTION_IMAGE_ROOT = PROJECT_ROOT / "generated" / "faction_images_90s" / "images"
+FACTION_IMAGE_MANIFEST = PROJECT_ROOT / "generated" / "faction_images_90s" / "manifest.csv"
 ICON_ASSETS = {
     "/assets/icons/codex.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "codex.png",
     "/assets/icons/builder.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "builder.png",
@@ -18,6 +21,34 @@ ICON_ASSETS = {
     "/assets/icons/battler.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "battler.png",
     "/assets/icons/start.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "start.png",
 }
+
+
+def load_faction_image_manifest():
+    if not FACTION_IMAGE_MANIFEST.exists():
+        return {}, {}
+
+    images_by_id = {}
+    images_by_name = {}
+    with FACTION_IMAGE_MANIFEST.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            if row.get("status") != "ok":
+                continue
+            output_file = Path(row.get("output_file") or "")
+            if not output_file.name:
+                continue
+            image = {
+                "id": row.get("id") or "",
+                "name": row.get("name") or "",
+                "filename": output_file.name,
+            }
+            if image["id"]:
+                images_by_id[image["id"]] = image
+            if image["name"]:
+                images_by_name[image["name"].lower()] = image
+    return images_by_id, images_by_name
+
+
+FACTION_IMAGES_BY_ID, FACTION_IMAGES_BY_NAME = load_faction_image_manifest()
 
 
 HOME_HTML = r"""<!doctype html>
@@ -741,7 +772,8 @@ CODEX_PAGE_STYLE = DESKTOP_STYLE + r"""
     }
 
     .faction-list-page .launch-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(384px, 100%), 384px));
+      justify-content: center;
     }
 
     .codex-page .launcher {
@@ -778,11 +810,66 @@ CODEX_PAGE_STYLE = DESKTOP_STYLE + r"""
       line-height: 1.12;
     }
 
+    .faction-list-page .launcher.has-faction-image {
+      position: relative;
+      width: min(384px, 100%);
+      min-height: 0;
+      height: auto;
+      aspect-ratio: 384 / 100;
+      isolation: isolate;
+      overflow: hidden;
+      color: var(--light);
+      text-align: left;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
+    .faction-list-page .launcher.has-faction-image::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background: linear-gradient(180deg, transparent 0%, transparent 40%, rgba(0, 0, 0, .32) 65%, rgba(0, 0, 0, .64) 100%);
+      pointer-events: none;
+    }
+
+    .faction-list-page .launcher.has-faction-image .faction-art-frame {
+      position: absolute;
+      top: -3px;
+      left: -3px;
+      z-index: 0;
+      display: block;
+      width: calc(100% + 6px);
+      overflow: hidden;
+      border: 0;
+      pointer-events: none;
+    }
+
+    .faction-list-page .launcher.has-faction-image .faction-art {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-width: none;
+      image-rendering: auto;
+    }
+
+    .faction-list-page .launcher.has-faction-image .label {
+      position: absolute;
+      right: 10px;
+      bottom: 6px;
+      left: 10px;
+      z-index: 2;
+      width: auto;
+      color: var(--light);
+      line-height: 1.08;
+      overflow-wrap: normal;
+      word-break: normal;
+    }
+
     @media (max-width: 760px) {
       .codex-root-page .launch-grid,
       .core-rules-page .launch-grid,
       .faction-list-page .launch-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(384px, 100%), 384px));
       }
 
       .codex-page .launcher {
@@ -801,6 +888,11 @@ CODEX_PAGE_STYLE = DESKTOP_STYLE + r"""
 
       .faction-list-page .label {
         font-size: 18px;
+      }
+
+      .faction-list-page .launcher.has-faction-image {
+        min-height: 0;
+        padding: 12px;
       }
 
     }
@@ -828,9 +920,184 @@ CODEX_PAGE_STYLE = DESKTOP_STYLE + r"""
         padding: 10px 12px;
       }
 
+      .many-buttons-page .launcher.has-faction-image {
+        width: min(384px, 100%);
+        min-height: 0;
+        padding: 10px 12px;
+      }
+
       .many-buttons-page .label {
         font-size: 17px;
         line-height: 1.12;
+      }
+
+      .many-buttons-page .launcher.has-faction-image .label {
+        right: 8px;
+        bottom: 5px;
+        left: 8px;
+        font-size: 16px;
+        line-height: 1.02;
+      }
+    }
+"""
+
+
+MOCKUP_PAGE_STYLE = CODEX_PAGE_STYLE + r"""
+    .mockup-page .panel-content {
+      gap: 18px;
+    }
+
+    .mockup-set {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .mockup-set > .section-tag {
+      justify-self: start;
+    }
+
+    .mockup-page .launch-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(384px, 100%), 384px));
+      justify-content: center;
+    }
+
+    .mockup-page .faction-mockup {
+      position: relative;
+      width: min(384px, 100%);
+      min-height: 0;
+      height: auto;
+      aspect-ratio: 384 / 100;
+      min-width: 0;
+      overflow: hidden;
+      isolation: isolate;
+      color: var(--light);
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
+    .faction-art-frame {
+      position: absolute;
+      z-index: 0;
+      display: block;
+      overflow: hidden;
+      border: 0;
+      pointer-events: none;
+    }
+
+    .faction-art {
+      display: block;
+      max-width: none;
+      image-rendering: auto;
+    }
+
+    .mockup-page .faction-mockup::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .mockup-page .faction-mockup .label {
+      position: relative;
+      z-index: 2;
+      color: var(--light);
+      overflow-wrap: normal;
+      word-break: normal;
+    }
+
+    .faction-mockup--right {
+      grid-template-columns: minmax(0, 1fr);
+      align-items: center;
+      justify-items: start;
+      text-align: left;
+    }
+
+    .faction-mockup--right::after {
+      background: linear-gradient(90deg, rgba(0, 0, 0, .46) 0%, rgba(0, 0, 0, .26) 44%, transparent 72%);
+    }
+
+    .faction-mockup--right .faction-art-frame {
+      top: 0;
+      left: 50%;
+      height: 100%;
+      transform: translateX(-50%);
+    }
+
+    .faction-mockup--right .faction-art {
+      width: auto;
+      height: 100%;
+    }
+
+    .faction-mockup--right .label {
+      max-width: 118px;
+      line-height: 1.08;
+    }
+
+    .faction-mockup--top {
+      align-content: end;
+      justify-items: start;
+      text-align: left;
+    }
+
+    .faction-mockup--top::after {
+      background: linear-gradient(180deg, transparent 0%, transparent 40%, rgba(0, 0, 0, .32) 65%, rgba(0, 0, 0, .64) 100%);
+    }
+
+    .faction-mockup--top .faction-art-frame {
+      top: -3px;
+      left: -3px;
+      width: calc(100% + 6px);
+    }
+
+    .faction-mockup--top .faction-art {
+      width: 100%;
+      height: auto;
+    }
+
+    .mockup-page .faction-mockup--top .label {
+      position: absolute;
+      right: 10px;
+      bottom: 6px;
+      left: 10px;
+      width: auto;
+      line-height: 1.08;
+    }
+
+    @media (max-width: 760px) {
+      .mockup-page .faction-mockup {
+        height: auto;
+      }
+    }
+
+    @media (max-width: 460px) {
+      .mockup-page .launch-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .mockup-page .faction-mockup {
+        width: 100%;
+        height: auto;
+      }
+
+      .mockup-page .faction-mockup--right {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .faction-mockup--right .label {
+        max-width: 142px;
+      }
+
+      .faction-mockup--right::after {
+        background: linear-gradient(90deg, rgba(0, 0, 0, .5) 0%, rgba(0, 0, 0, .28) 58%, transparent 84%);
+      }
+
+      .mockup-page .faction-mockup--top .label {
+        right: 8px;
+        bottom: 5px;
+        left: 8px;
+        font-size: 16px;
+        line-height: 1.02;
       }
     }
 """
@@ -844,14 +1111,64 @@ def escape_attr(value):
     return html.escape(str(value), quote=True)
 
 
+def faction_image_url(image):
+    return f"/assets/faction-images/{escape_attr(image['filename'])}"
+
+
+def find_faction_image(name, faction_id=None):
+    if faction_id and faction_id in FACTION_IMAGES_BY_ID:
+        return FACTION_IMAGES_BY_ID[faction_id]
+    return FACTION_IMAGES_BY_NAME.get(str(name).lower())
+
+
+def render_mockup_button(image, variant):
+    label = escape_html(image["name"])
+    label_attr = escape_attr(image["name"])
+    src = faction_image_url(image)
+    image_html = (
+        f'<span class="faction-art-frame" aria-hidden="true">'
+        f'<img class="faction-art" src="{src}" alt=""></span>'
+    )
+    return (
+        f'            <button class="launcher faction-mockup faction-mockup--{variant}" '
+        f'type="button" data-app="{label_attr}" data-route="{escape_attr(image["id"])}" '
+        f'aria-pressed="false">\n'
+        f'              {image_html}\n'
+        f'              <span class="label">{label}</span>\n'
+        f'            </button>'
+    )
+
+
+def render_mockup_grid(variant, label, images):
+    buttons = "\n".join(render_mockup_button(image, variant) for image in images)
+    return f"""          <section class="mockup-set" aria-label="{escape_attr(label)}">
+            <div class="section-tag">{escape_html(label)}</div>
+            <div class="launch-grid mockup-grid mockup-grid--{variant}">
+{buttons}
+            </div>
+          </section>"""
+
+
 def render_launcher(button):
     href = f' data-href="{escape_attr(button["href"])}"' if button.get("href") else ""
+    classes = ["launcher"]
     tag = ""
     if button.get("tag"):
         tag = f'\n            <span class="section-tag">{escape_html(button["tag"])}</span>'
+    image = button.get("image")
+    image_html = ""
+    if image:
+        classes.append("has-faction-image")
+        src = faction_image_url(image)
+        image_html = (
+            f'            <span class="faction-art-frame" aria-hidden="true">'
+            f'<img class="faction-art" src="{src}" alt=""></span>\n'
+        )
+    class_attr = escape_attr(" ".join(classes))
     return (
-        f'          <button class="launcher" type="button" data-app="{escape_attr(button["label"])}" '
+        f'          <button class="{class_attr}" type="button" data-app="{escape_attr(button["label"])}" '
         f'data-route="{escape_attr(button["route"])}"{href} aria-pressed="false">\n'
+        f'{image_html}'
         f'            <span class="label">{escape_html(button["label"])}</span>{tag}\n'
         f'          </button>'
     )
@@ -1047,6 +1364,194 @@ def render_codex_page(title, window_title, task_title, page_class, grid_label, b
 """
 
 
+MOCKUP_FACTION_IDS = (
+    "01623188-9470-4441-96b0-e06eb2572bb5",
+    "aee1b46d-3461-4d5d-a612-0efd05dd843d",
+    "2e79f9cd-94dc-48ca-bddf-6d5e877609c5",
+    "47670bc3-64b8-4c2d-9154-7391f132688b",
+    "0b30f1e3-1e5c-4823-afa1-07951433a270",
+    "1a241f8e-2d79-47c4-82b1-f6faea353970",
+)
+
+
+MOCKUP_WINDOW_SCRIPT = r"""
+  <script>
+    const titleBar = document.querySelector(".title-bar");
+    const launchers = Array.from(document.querySelectorAll(".launcher"));
+
+    function setupWinScrollbars() {
+      document.querySelectorAll(".panel").forEach((panel) => {
+        const content = panel.querySelector(".panel-content");
+        if (!content || panel.dataset.scrollbarReady === "true") {
+          return;
+        }
+
+        panel.dataset.scrollbarReady = "true";
+        const scrollbar = document.createElement("div");
+        scrollbar.className = "win-scrollbar";
+        scrollbar.hidden = true;
+        scrollbar.innerHTML = `
+          <button class="scroll-button scroll-button-up" type="button" aria-label="Scroll up"></button>
+          <div class="scroll-track"><div class="scroll-thumb"></div></div>
+          <button class="scroll-button scroll-button-down" type="button" aria-label="Scroll down"></button>
+        `;
+        panel.appendChild(scrollbar);
+
+        const upButton = scrollbar.querySelector(".scroll-button-up");
+        const downButton = scrollbar.querySelector(".scroll-button-down");
+        const track = scrollbar.querySelector(".scroll-track");
+        const thumb = scrollbar.querySelector(".scroll-thumb");
+
+        function scrollStep() {
+          return Math.max(64, Math.floor(content.clientHeight * 0.35));
+        }
+
+        function updateScrollbar() {
+          const maxScroll = content.scrollHeight - content.clientHeight;
+          const isScrollable = maxScroll > 1;
+          panel.classList.toggle("is-scrollable", isScrollable);
+          scrollbar.hidden = !isScrollable;
+          if (!isScrollable) {
+            return;
+          }
+
+          const trackHeight = track.clientHeight;
+          const thumbHeight = Math.max(24, Math.floor(content.clientHeight / content.scrollHeight * trackHeight));
+          const travel = Math.max(0, trackHeight - thumbHeight);
+          const thumbTop = maxScroll ? Math.round(content.scrollTop / maxScroll * travel) : 0;
+          thumb.style.height = `${thumbHeight}px`;
+          thumb.style.transform = `translateY(${thumbTop}px)`;
+        }
+
+        upButton.addEventListener("click", () => content.scrollBy({ top: -scrollStep(), behavior: "auto" }));
+        downButton.addEventListener("click", () => content.scrollBy({ top: scrollStep(), behavior: "auto" }));
+        track.addEventListener("click", (event) => {
+          if (event.target !== track) {
+            return;
+          }
+          const thumbRect = thumb.getBoundingClientRect();
+          content.scrollBy({ top: event.clientY < thumbRect.top ? -content.clientHeight : content.clientHeight, behavior: "auto" });
+        });
+
+        let dragStart = null;
+        thumb.addEventListener("pointerdown", (event) => {
+          dragStart = { y: event.clientY, scrollTop: content.scrollTop };
+          thumb.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        });
+        thumb.addEventListener("pointermove", (event) => {
+          if (!dragStart) {
+            return;
+          }
+          const maxScroll = content.scrollHeight - content.clientHeight;
+          const travel = Math.max(1, track.clientHeight - thumb.offsetHeight);
+          content.scrollTop = dragStart.scrollTop + (event.clientY - dragStart.y) * maxScroll / travel;
+        });
+        thumb.addEventListener("pointerup", () => {
+          dragStart = null;
+        });
+        thumb.addEventListener("pointercancel", () => {
+          dragStart = null;
+        });
+
+        content.addEventListener("scroll", updateScrollbar, { passive: true });
+        window.addEventListener("resize", updateScrollbar);
+        if ("ResizeObserver" in window) {
+          const observer = new ResizeObserver(updateScrollbar);
+          observer.observe(panel);
+          observer.observe(content);
+        }
+        requestAnimationFrame(updateScrollbar);
+      });
+    }
+
+    function goUp() {
+      window.location.href = titleBar.dataset.upHref;
+    }
+
+    launchers.forEach((button) => {
+      button.addEventListener("click", () => {
+        launchers.forEach((item) => item.setAttribute("aria-pressed", "false"));
+        button.setAttribute("aria-pressed", "true");
+      });
+    });
+
+    titleBar.addEventListener("click", goUp);
+    titleBar.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        goUp();
+      }
+    });
+
+    setupWinScrollbars();
+    window.addEventListener("load", setupWinScrollbars);
+  </script>
+"""
+
+
+def render_faction_image_mockups():
+    images = [
+        FACTION_IMAGES_BY_ID[faction_id]
+        for faction_id in MOCKUP_FACTION_IDS
+        if faction_id in FACTION_IMAGES_BY_ID
+    ]
+    mockup_html = "\n".join([
+        render_mockup_grid("right", "A. Image Right", images),
+        render_mockup_grid("top", "B. Image Top", images),
+    ])
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Faction Image Mockups - HereticTools</title>
+  <style>{MOCKUP_PAGE_STYLE}
+  </style>
+</head>
+<body>
+  <main class="desktop codex-page faction-list-page many-buttons-page mockup-page">
+    <section class="shell" aria-label="Faction Image Mockups">
+      <div class="title-bar" role="button" tabindex="0" aria-label="Back to Codex" title="Back to Codex" data-up-href="/codex">
+        <div class="title">FactionMockups.exe</div>
+        <div class="title-controls" aria-hidden="true">
+          <span class="title-control">_</span>
+          <span class="title-control">[]</span>
+          <span class="title-control">x</span>
+        </div>
+      </div>
+
+      <nav class="menu-bar" aria-label="Application menu">
+        <a class="menu-item" href="/codex">File</a>
+        <span class="menu-item">View</span>
+        <span class="menu-item">Tools</span>
+        <span class="menu-item">Help</span>
+      </nav>
+
+      <div class="panel">
+        <div class="panel-content">
+{mockup_html}
+        </div>
+      </div>
+    </section>
+
+    <footer class="taskbar" aria-label="Desktop taskbar">
+      <a class="start-button" href="/">
+        <span class="start-mark" aria-hidden="true">
+          <img class="start-art" src="/assets/icons/start.png" alt="">
+        </span>
+        Start
+      </a>
+      <div class="task-status">Faction Mockups</div>
+    </footer>
+  </main>
+
+{MOCKUP_WINDOW_SCRIPT}
+</body>
+</html>
+"""
+
+
 CODEX_HTML = render_codex_page(
     title="Codex",
     window_title="Codex.exe",
@@ -1148,7 +1653,11 @@ def render_faction_group_page(heretic_builder, group_key):
     group_ids = group["ids"]
     group_factions = [faction for faction in factions if faction["id"] in group_ids]
     buttons = [
-        {"label": faction["name"], "route": faction["id"]}
+        {
+            "label": faction["name"],
+            "route": faction["id"],
+            "image": find_faction_image(faction["name"], faction["id"]),
+        }
         for faction in group_factions
     ]
     if group_key == "imperium":
@@ -1156,6 +1665,7 @@ def render_faction_group_page(heretic_builder, group_key):
             "label": "Adeptus Astartes",
             "route": "adeptus-astartes",
             "href": "/codex/imperium/adeptus-astartes",
+            "image": find_faction_image("Adeptus Astartes"),
         })
         buttons.sort(key=lambda button: button["label"].lower())
     return render_codex_page(
@@ -1186,7 +1696,11 @@ def render_adeptus_astartes_page(heretic_builder):
         back_href="/codex/imperium",
         back_label="Back to Imperium",
         buttons=[
-            {"label": faction["name"], "route": faction["id"]}
+            {
+                "label": faction["name"],
+                "route": faction["id"],
+                "image": find_faction_image(faction["name"], faction["id"]),
+            }
             for faction in group_factions
         ],
     )
@@ -1255,6 +1769,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_html(CODEX_HTML)
             elif parsed.path == "/codex/core-rules":
                 self.send_html(CORE_RULES_HTML)
+            elif parsed.path == "/codex/faction-image-mockups":
+                self.send_html(render_faction_image_mockups())
             elif parsed.path == "/codex/imperium":
                 self.send_html(render_faction_group_page(self.heretic_builder, "imperium"))
             elif parsed.path == "/codex/imperium/adeptus-astartes":
@@ -1265,6 +1781,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_html(render_faction_group_page(self.heretic_builder, "xenos"))
             elif parsed.path in ICON_ASSETS:
                 self.send_png(ICON_ASSETS[parsed.path])
+            elif parsed.path.startswith("/assets/faction-images/"):
+                filename = Path(unquote(parsed.path)).name
+                self.send_png(FACTION_IMAGE_ROOT / filename)
             elif parsed.path == "/api/bootstrap":
                 self.send_json(self.heretic_builder.bootstrap())
             elif parsed.path == "/api/detachments":
