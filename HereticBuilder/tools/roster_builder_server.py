@@ -5,12 +5,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from roster_builder_assets import DEFAULT_DB, FACTION_IMAGE_ROOT, ICON_ASSETS, STATIC_ROOT
+from roster_builder_assets import DEFAULT_DB, FACTION_IMAGE_ROOT, ICON_ASSETS, STATIC_ROOT, UNIT_IMAGE_ROOT
 from roster_builder_codex import (
     render_adeptus_astartes_page,
     render_codex_root_page,
     render_core_rules_page,
+    render_faction_army_rule_page,
+    render_faction_datasheets_page,
+    render_faction_detachments_page,
     render_faction_group_page,
+    render_faction_page,
 )
 from roster_builder_core import HereticBuilder
 from roster_builder_templates import render_template
@@ -82,6 +86,19 @@ class Handler(BaseHTTPRequestHandler):
     def fail(self, error):
         self.send_json({"error": str(error)}, status=400)
 
+    def send_faction_codex_page(self, path):
+        parts = path.strip("/").split("/")
+        if len(parts) == 3:
+            self.send_html(render_faction_page(self.heretic_builder, parts[2]))
+        elif len(parts) == 4 and parts[3] == "army-rule":
+            self.send_html(render_faction_army_rule_page(self.heretic_builder, parts[2]))
+        elif len(parts) == 4 and parts[3] == "detachments":
+            self.send_html(render_faction_detachments_page(self.heretic_builder, parts[2]))
+        elif len(parts) == 4 and parts[3] == "datasheets":
+            self.send_html(render_faction_datasheets_page(self.heretic_builder, parts[2]))
+        else:
+            self.send_json({"error": "Not found"}, status=404)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
@@ -94,6 +111,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_html(render_codex_root_page())
             elif parsed.path == "/codex/core-rules":
                 self.send_html(render_core_rules_page())
+            elif parsed.path.startswith("/codex/faction/"):
+                self.send_faction_codex_page(parsed.path)
             elif parsed.path == "/codex/imperium":
                 self.send_html(render_faction_group_page(self.heretic_builder, "imperium"))
             elif parsed.path == "/codex/imperium/adeptus-astartes":
@@ -107,6 +126,9 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path.startswith("/assets/faction-images/"):
                 filename = Path(unquote(parsed.path)).name
                 self.send_png(FACTION_IMAGE_ROOT / filename)
+            elif parsed.path.startswith("/assets/unit-images/"):
+                filename = Path(unquote(parsed.path)).name
+                self.send_png(UNIT_IMAGE_ROOT / filename)
             elif parsed.path == "/api/bootstrap":
                 self.send_json(self.heretic_builder.bootstrap())
             elif parsed.path == "/api/detachments":

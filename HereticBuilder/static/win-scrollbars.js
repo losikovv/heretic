@@ -26,21 +26,35 @@
         return Math.max(64, Math.floor(content.clientHeight * 0.35));
       }
 
-      function updateScrollbar() {
-        const maxScroll = content.scrollHeight - content.clientHeight;
-        const isScrollable = maxScroll > 1;
-        panel.classList.toggle("is-scrollable", isScrollable);
-        scrollbar.hidden = !isScrollable;
-        if (!isScrollable) {
-          return;
+      function measureBaseMaxScroll() {
+        const hadScrollbar = panel.classList.contains("is-scrollable");
+        if (hadScrollbar) {
+          panel.classList.remove("is-scrollable");
         }
+        const maxScroll = content.scrollHeight - content.clientHeight;
+        if (hadScrollbar) {
+          panel.classList.add("is-scrollable");
+        }
+        return maxScroll;
+      }
 
+      function updateThumb() {
+        const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
         const trackHeight = track.clientHeight;
         const thumbHeight = Math.max(24, Math.floor(content.clientHeight / content.scrollHeight * trackHeight));
         const travel = Math.max(0, trackHeight - thumbHeight);
         const thumbTop = maxScroll ? Math.round(content.scrollTop / maxScroll * travel) : 0;
         thumb.style.height = `${thumbHeight}px`;
         thumb.style.transform = `translateY(${thumbTop}px)`;
+      }
+
+      function refreshScrollbar() {
+        const isScrollable = measureBaseMaxScroll() > 1;
+        panel.classList.toggle("is-scrollable", isScrollable);
+        scrollbar.hidden = !isScrollable;
+        if (isScrollable) {
+          updateThumb();
+        }
       }
 
       upButton.addEventListener("click", () => content.scrollBy({ top: -scrollStep(), behavior: "auto" }));
@@ -74,14 +88,14 @@
         dragStart = null;
       });
 
-      content.addEventListener("scroll", updateScrollbar, { passive: true });
-      window.addEventListener("resize", updateScrollbar);
+      content.addEventListener("scroll", updateThumb, { passive: true });
+      window.addEventListener("resize", refreshScrollbar);
       if ("ResizeObserver" in window) {
-        const observer = new ResizeObserver(updateScrollbar);
+        const observer = new ResizeObserver(refreshScrollbar);
         observer.observe(panel);
         observer.observe(content);
       }
-      requestAnimationFrame(updateScrollbar);
+      requestAnimationFrame(refreshScrollbar);
     });
   }
 

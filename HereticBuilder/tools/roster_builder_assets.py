@@ -8,6 +8,8 @@ HERETIC_BUILDER_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = HERETIC_BUILDER_ROOT / "static"
 FACTION_IMAGE_ROOT = PROJECT_ROOT / "generated" / "faction_images_90s" / "images"
 FACTION_IMAGE_MANIFEST = PROJECT_ROOT / "generated" / "faction_images_90s" / "manifest.csv"
+UNIT_IMAGE_ROOT = PROJECT_ROOT / "generated" / "unit_images_90s" / "images"
+UNIT_IMAGE_MANIFEST = PROJECT_ROOT / "generated" / "unit_images_90s" / "manifest.csv"
 
 ICON_ASSETS = {
     "/assets/icons/codex.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "codex.png",
@@ -44,3 +46,31 @@ def load_faction_image_manifest():
 
 
 FACTION_IMAGES_BY_ID, FACTION_IMAGES_BY_NAME = load_faction_image_manifest()
+
+
+def load_unit_image_manifest():
+    if not UNIT_IMAGE_MANIFEST.exists():
+        return {}, {}
+
+    images_by_id = {}
+    images_by_name = {}
+    with UNIT_IMAGE_MANIFEST.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            if row.get("status") not in {"ok", "exists"}:
+                continue
+            output_file = Path(row.get("output_file") or "")
+            if not output_file.name:
+                continue
+            image = {
+                "id": row.get("id") or "",
+                "name": row.get("name") or "",
+                "filename": output_file.name,
+            }
+            if image["id"]:
+                images_by_id[image["id"]] = image
+            if image["name"]:
+                images_by_name[image["name"].lower()] = image
+    return images_by_id, images_by_name
+
+
+UNIT_IMAGES_BY_ID, UNIT_IMAGES_BY_NAME = load_unit_image_manifest()

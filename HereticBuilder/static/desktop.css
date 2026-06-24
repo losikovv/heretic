@@ -424,6 +424,10 @@
         gap: 14px;
       }
 
+      .panel.is-scrollable .panel-content {
+        padding-right: 40px;
+      }
+
       h1 {
         font-size: 32px;
       }
