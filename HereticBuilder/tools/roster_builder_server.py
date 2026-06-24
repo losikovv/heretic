@@ -12,6 +12,7 @@ from roster_builder_codex import (
     render_core_rules_page,
     render_faction_army_rule_page,
     render_faction_datasheets_page,
+    render_faction_detachment_page,
     render_faction_detachments_page,
     render_faction_group_page,
     render_faction_page,
@@ -94,6 +95,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html(render_faction_army_rule_page(self.heretic_builder, parts[2]))
         elif len(parts) == 4 and parts[3] == "detachments":
             self.send_html(render_faction_detachments_page(self.heretic_builder, parts[2]))
+        elif len(parts) == 5 and parts[3] == "detachment":
+            self.send_html(render_faction_detachment_page(self.heretic_builder, parts[2], parts[4]))
         elif len(parts) == 4 and parts[3] == "datasheets":
             self.send_html(render_faction_datasheets_page(self.heretic_builder, parts[2]))
         else:

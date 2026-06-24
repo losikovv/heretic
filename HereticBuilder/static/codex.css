@@ -211,6 +211,125 @@
       background: #d7d7d7;
     }
 
+    .unit-card-heading {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .unit-card-tag {
+      flex: 0 0 auto;
+      padding: 2px 6px;
+      background: var(--title);
+      color: var(--light);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.1;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
+    .detachment-detail-content {
+      gap: 12px;
+    }
+
+    .detachment-summary-card h2 {
+      font-size: 26px;
+    }
+
+    .detachment-tag-row {
+      display: flex;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 5px;
+    }
+
+    .detachment-section-title {
+      margin: 2px 0 0;
+      padding: 5px 8px;
+      background: var(--title);
+      color: var(--light);
+      font-size: 18px;
+      line-height: 1.1;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
+    .detachment-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .detachment-detail-card,
+    .detachment-feature-card {
+      display: grid;
+      align-content: start;
+      gap: 7px;
+    }
+
+    .detachment-detail-card p,
+    .detachment-feature-card p,
+    .stratagem-rule-block p {
+      margin-top: 0;
+      line-height: 1.32;
+    }
+
+    .detachment-bullet-list {
+      display: grid;
+      gap: 6px;
+      margin: 0;
+      padding-left: 20px;
+      line-height: 1.32;
+    }
+
+    .detachment-bullet-list li > p {
+      margin: 0;
+    }
+
+    .stratagem-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .stratagem-card {
+      gap: 9px;
+    }
+
+    .detachment-lore {
+      padding: 7px;
+      background: #d7d7d7;
+      border-style: solid;
+      border-width: 2px;
+      border-color: var(--shadow) var(--light) var(--light) var(--shadow);
+    }
+
+    .detachment-lore p {
+      margin: 0;
+    }
+
+    .detachment-lore p + p {
+      margin-top: 6px;
+    }
+
+    .stratagem-rule-block {
+      display: grid;
+      gap: 4px;
+      padding-top: 2px;
+    }
+
+    .stratagem-rule-label {
+      width: fit-content;
+      max-width: 100%;
+      padding: 2px 7px;
+      background: var(--title);
+      color: var(--light);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.1;
+      text-shadow: 1px 1px 0 var(--ink);
+    }
+
     .list-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 384px));
@@ -375,6 +494,14 @@
 
       .codex-page .title-bar.faction-hero-title {
         min-height: 96px;
+      }
+
+      .unit-card-heading {
+        display: grid;
+      }
+
+      .detachment-tag-row {
+        justify-content: flex-start;
       }
 
     }

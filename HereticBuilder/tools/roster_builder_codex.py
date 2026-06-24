@@ -38,6 +38,10 @@ def faction_href(faction_id):
     return f"/codex/faction/{escape_attr(faction_id)}"
 
 
+def detachment_href(faction_id, detachment_id):
+    return f"/codex/faction/{faction_id}/detachment/{detachment_id}"
+
+
 def title_bar_context(hero_image):
     if not hero_image:
         return {"title_bar_class": "", "title_bar_style_attr": ""}
@@ -325,10 +329,12 @@ def render_faction_page(heretic_builder, faction_id):
 
 
 def normalize_rule_text(value):
-    text = str(value or "").replace("\r\n", "\n")
-    text = re.sub(r"<ul>\s*<li>", "\n■ ", text)
-    text = re.sub(r"</li>\s*<li>", "\n■ ", text)
-    text = re.sub(r"</li>\s*</ul>", "", text)
+    text = html.unescape(str(value or "").replace("\r\n", "\n").replace("\r", "\n"))
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?(?:b|strong|k|u)>", "**", text, flags=re.IGNORECASE)
+    text = re.sub(r"<ul[^>]*>\s*<li[^>]*>", "\n■ ", text, flags=re.IGNORECASE)
+    text = re.sub(r"</li>\s*<li[^>]*>", "\n■ ", text, flags=re.IGNORECASE)
+    text = re.sub(r"</li>\s*</ul>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", "", text)
     return text.strip()
 
@@ -368,6 +374,23 @@ def render_rule_component(component):
     return f'<section class="{" ".join(classes)}">{"".join(pieces)}</section>'
 
 
+def rule_components_for(conn, relation_column, relation_id):
+    if relation_column not in {"armyRuleId", "detachmentRuleId"}:
+        raise ValueError("Unsupported rule component relation")
+    return [
+        dict_row(row)
+        for row in conn.execute(
+            f"""
+            select type, title, textContent, trigger, effect, displayOrder
+            from rule_container_component
+            where {relation_column} = ?
+            order by displayOrder
+            """,
+            [relation_id],
+        )
+    ]
+
+
 def army_rules_for_faction(heretic_builder, faction_id):
     with heretic_builder.connect(readonly=True) as conn:
         rules = [
@@ -385,18 +408,7 @@ def army_rules_for_faction(heretic_builder, faction_id):
             )
         ]
         for rule in rules:
-            rule["components"] = [
-                dict_row(row)
-                for row in conn.execute(
-                    """
-                    select type, title, textContent, trigger, effect, displayOrder
-                    from rule_container_component
-                    where armyRuleId = ?
-                    order by displayOrder
-                    """,
-                    [rule["id"]],
-                )
-            ]
+            rule["components"] = rule_components_for(conn, "armyRuleId", rule["id"])
     return rules
 
 
@@ -428,14 +440,31 @@ def render_faction_army_rule_page(heretic_builder, faction_id):
     )
 
 
-def render_list_item(title, meta):
+def render_list_item(title, meta, href=None, extra_class=""):
     meta_html = f'<div class="list-item-meta">{escape_html(meta)}</div>' if meta else ""
+    classes = " ".join(item for item in ("list-item", extra_class) if item)
+    if href:
+        return (
+            f'<a class="{escape_attr(classes)}" href="{escape_attr(href)}">'
+            f'<div class="list-item-title">{escape_html(title)}</div>'
+            f'{meta_html}'
+            '</a>'
+        )
     return (
-        '<div class="list-item">'
+        f'<div class="{escape_attr(classes)}">'
         f'<div class="list-item-title">{escape_html(title)}</div>'
         f'{meta_html}'
         '</div>'
     )
+
+
+def detachment_meta(detachment):
+    meta = []
+    if detachment.get("detachmentPointsCost") is not None:
+        meta.append(f'{detachment["detachmentPointsCost"]} RP')
+    if detachment.get("isCombatPatrol"):
+        meta.append("Combat Patrol")
+    return " / ".join(meta)
 
 
 def render_datasheet_item(datasheet):
@@ -650,6 +679,259 @@ def render_datasheet_groups(heretic_builder, native_datasheets, allied_datasheet
     return '<div class="codex-content">' + "".join(sections) + "</div>"
 
 
+def detachment_by_id_for_faction(heretic_builder, faction_id, detachment_id):
+    with heretic_builder.connect(readonly=True) as conn:
+        row = conn.execute(
+            """
+            select d.id, d.name, d.bannerImage, d.rowImage, d.isCombatPatrol,
+                   coalesce(dfdpc.detachmentPointsCost, d.detachmentPointsCost) as detachmentPointsCost
+            from detachment d
+            join detachment_faction_keyword dfk
+              on dfk.detachmentId = d.id
+             and dfk.factionKeywordId = ?
+            left join detachment_faction_detachment_points_cost dfdpc
+              on dfdpc.detachmentId = d.id
+             and dfdpc.factionKeywordId = ?
+            where d.id = ?
+            """,
+            [faction_id, faction_id, detachment_id],
+        ).fetchone()
+    if not row:
+        raise ValueError("Detachment not found")
+    return dict_row(row)
+
+
+def detachment_rules_for(heretic_builder, detachment_id):
+    with heretic_builder.connect(readonly=True) as conn:
+        rules = [
+            dict_row(row)
+            for row in conn.execute(
+                """
+                select id, name
+                from detachment_rule
+                where detachmentId = ?
+                  and hiddenFromCommandBunker = 0
+                order by displayOrder, lower(name)
+                """,
+                [detachment_id],
+            )
+        ]
+        for rule in rules:
+            rule["components"] = rule_components_for(conn, "detachmentRuleId", rule["id"])
+    return rules
+
+
+def detachment_details_for(heretic_builder, detachment_id):
+    with heretic_builder.connect(readonly=True) as conn:
+        details = [
+            dict_row(row)
+            for row in conn.execute(
+                """
+                select id, title
+                from detachment_detail
+                where detachmentId = ?
+                order by displayOrder, lower(title)
+                """,
+                [detachment_id],
+            )
+        ]
+        for detail in details:
+            detail["bulletPoints"] = [
+                dict_row(row)
+                for row in conn.execute(
+                    """
+                    select text
+                    from detachment_detail_bullet_point
+                    where detachmentDetailId = ?
+                    order by displayOrder
+                    """,
+                    [detail["id"]],
+                )
+            ]
+    return details
+
+
+def detachment_enhancements_for(heretic_builder, detachment_id):
+    with heretic_builder.connect(readonly=True) as conn:
+        rows = conn.execute(
+            """
+            select id, name, rules, lore, basePointsCost, enhancementType
+            from enhancement
+            where detachmentId = ?
+            order by displayOrder, lower(name)
+            """,
+            [detachment_id],
+        ).fetchall()
+    return [dict_row(row) for row in rows]
+
+
+def detachment_stratagems_for(heretic_builder, detachment_id):
+    with heretic_builder.connect(readonly=True) as conn:
+        rows = conn.execute(
+            """
+            select id, name, lore, whenRules, targetRules, effectRules, restrictionRules,
+                   cpCost, category, secondaryEffectAdditionalCPCost,
+                   secondaryEffectIsMutuallyExclusive, secondaryEffect
+            from stratagem
+            where detachmentId = ?
+            order by displayOrder, lower(name)
+            """,
+            [detachment_id],
+        ).fetchall()
+    return [dict_row(row) for row in rows]
+
+
+def render_section_title(title):
+    return f'<h2 class="detachment-section-title">{escape_html(title)}</h2>'
+
+
+def render_rule_article(title, components):
+    components_html = "".join(render_rule_component(component) for component in components)
+    return (
+        '<article class="codex-content">'
+        f'<section class="rule-card"><h2>{escape_html(title)}</h2></section>'
+        f'{components_html}'
+        '</article>'
+    )
+
+
+def render_detachment_details(details):
+    if not details:
+        return ""
+    cards = []
+    for detail in details:
+        bullet_html = "".join(
+            f'<li>{render_rich_text(point["text"])}</li>'
+            for point in detail["bulletPoints"]
+        )
+        if not bullet_html:
+            continue
+        cards.append(
+            '<section class="rule-card detachment-detail-card">'
+            f'<h3>{escape_html(detail["title"])}</h3>'
+            f'<ul class="detachment-bullet-list">{bullet_html}</ul>'
+            '</section>'
+        )
+    if not cards:
+        return ""
+    return render_section_title("Details") + '<div class="detachment-card-grid">' + "".join(cards) + "</div>"
+
+
+def render_enhancement_card(enhancement):
+    tags = []
+    if enhancement.get("basePointsCost") is not None:
+        tags.append(f'{enhancement["basePointsCost"]} pts')
+    if enhancement.get("enhancementType"):
+        tags.append(enhancement["enhancementType"].title())
+    tag_html = "".join(f'<span class="unit-card-tag">{escape_html(tag)}</span>' for tag in tags)
+    lore_html = render_lore_block(enhancement["lore"]) if enhancement.get("lore") else ""
+    lore_class = " has-lore" if lore_html else ""
+    return (
+        f'<section class="rule-card detachment-feature-card{lore_class}">'
+        '<div class="unit-card-heading">'
+        f'<h3>{escape_html(enhancement["name"])}</h3>'
+        f'<div class="detachment-tag-row">{tag_html}</div>'
+        '</div>'
+        f'{render_rich_text(enhancement["rules"])}'
+        f'{lore_html}'
+        '</section>'
+    )
+
+
+def render_detachment_enhancements(enhancements):
+    if not enhancements:
+        return ""
+    cards = "".join(render_enhancement_card(enhancement) for enhancement in enhancements)
+    return render_section_title("Enhancements") + '<div class="detachment-card-grid">' + cards + "</div>"
+
+
+def render_lore_block(text):
+    if not text or not normalize_rule_text(text):
+        return ""
+    return f'<div class="detachment-lore">{render_rich_text(text)}</div>'
+
+
+def render_stratagem_rule(label, text):
+    if not text or not normalize_rule_text(text):
+        return ""
+    return (
+        '<div class="stratagem-rule-block">'
+        f'<div class="stratagem-rule-label">{escape_html(label)}</div>'
+        f'{render_rich_text(text)}'
+        '</div>'
+    )
+
+
+def render_stratagem_card(stratagem):
+    tags = []
+    if stratagem.get("cpCost"):
+        tags.append(f'{stratagem["cpCost"]} CP')
+    if stratagem.get("category"):
+        tags.append(stratagem["category"])
+    tag_html = "".join(f'<span class="unit-card-tag">{escape_html(tag)}</span>' for tag in tags)
+    secondary_label = "Secondary Effect"
+    if stratagem.get("secondaryEffectAdditionalCPCost") is not None:
+        secondary_label = f'Secondary Effect (+{stratagem["secondaryEffectAdditionalCPCost"]} CP)'
+    pieces = [
+        render_stratagem_rule("When", stratagem.get("whenRules")),
+        render_stratagem_rule("Target", stratagem.get("targetRules")),
+        render_stratagem_rule("Effect", stratagem.get("effectRules")),
+        render_stratagem_rule("Restrictions", stratagem.get("restrictionRules")),
+        render_stratagem_rule(secondary_label, stratagem.get("secondaryEffect")),
+    ]
+    lore_html = render_lore_block(stratagem["lore"]) if stratagem.get("lore") else ""
+    return (
+        '<section class="rule-card detachment-feature-card stratagem-card">'
+        '<div class="unit-card-heading">'
+        f'<h3>{escape_html(stratagem["name"])}</h3>'
+        f'<div class="detachment-tag-row">{tag_html}</div>'
+        '</div>'
+        f'{lore_html}'
+        f'{"".join(piece for piece in pieces if piece)}'
+        '</section>'
+    )
+
+
+def render_detachment_stratagems(stratagems):
+    if not stratagems:
+        return ""
+    cards = "".join(render_stratagem_card(stratagem) for stratagem in stratagems)
+    return render_section_title("Stratagems") + '<div class="detachment-card-grid stratagem-grid">' + cards + "</div>"
+
+
+def render_faction_detachment_page(heretic_builder, faction_id, detachment_id):
+    faction = faction_by_id(heretic_builder, faction_id)
+    detachment = detachment_by_id_for_faction(heretic_builder, faction["id"], detachment_id)
+    rules = detachment_rules_for(heretic_builder, detachment["id"])
+    details = detachment_details_for(heretic_builder, detachment["id"])
+    enhancements = detachment_enhancements_for(heretic_builder, detachment["id"])
+    stratagems = detachment_stratagems_for(heretic_builder, detachment["id"])
+
+    sections = [
+        '<section class="rule-card detachment-summary-card">'
+        '<div class="unit-card-heading">'
+        f'<h2>{escape_html(detachment["name"])}</h2>'
+        f'<div class="detachment-tag-row"><span class="unit-card-tag">{escape_html(detachment_meta(detachment))}</span></div>'
+        '</div>'
+        '</section>'
+    ]
+    sections.extend(render_rule_article(rule["name"], rule["components"]) for rule in rules)
+    sections.append(render_detachment_details(details))
+    sections.append(render_detachment_enhancements(enhancements))
+    sections.append(render_detachment_stratagems(stratagems))
+    content_html = '<div class="codex-content detachment-detail-content">' + "".join(section for section in sections if section) + "</div>"
+    return render_codex_content_page(
+        title=f"{detachment['name']} Detachment",
+        window_title=f"{detachment['name']}\nDetachment.exe",
+        task_title=f"{faction['name']} / {detachment['name']}",
+        page_class="faction-detail-page detachment-detail-page",
+        content_html=content_html,
+        back_href=f"{faction_href(faction['id'])}/detachments",
+        back_label=f"Back to {faction['name']} Detachments",
+        hero_image=faction_hero_image(faction),
+    )
+
+
 def render_faction_detachments_page(heretic_builder, faction_id):
     faction = faction_by_id(heretic_builder, faction_id)
     detachments = heretic_builder.detachments(faction["id"]).get("detachments", [])
@@ -657,7 +939,8 @@ def render_faction_detachments_page(heretic_builder, faction_id):
         items_html = "".join(
             render_list_item(
                 detachment["name"],
-                f'{detachment["detachmentPointsCost"]} RP' if detachment.get("detachmentPointsCost") is not None else "",
+                detachment_meta(detachment),
+                href=detachment_href(faction["id"], detachment["id"]),
             )
             for detachment in detachments
         )
