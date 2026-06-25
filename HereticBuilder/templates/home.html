@@ -10,20 +10,11 @@
   <main class="desktop">
     <section class="shell" aria-label="HereticTools">
       <div class="title-bar">
-        <div class="title">HereticTools.exe</div>
+        <div class="title">HereticTools</div>
         <div class="title-controls" aria-hidden="true">
-          <span class="title-control">_</span>
-          <span class="title-control">[]</span>
           <span class="title-control">x</span>
         </div>
       </div>
-
-      <nav class="menu-bar" aria-label="Application menu">
-        <span class="menu-item">File</span>
-        <span class="menu-item">View</span>
-        <span class="menu-item">Tools</span>
-        <span class="menu-item">Help</span>
-      </nav>
 
       <div class="panel">
         <div class="panel-content">
@@ -64,11 +55,16 @@
         </span>
         Start
       </div>
-      <div class="task-status">HereticTools</div>
+      <form class="taskbar-search" role="search" autocomplete="off">
+        <label class="visually-hidden" for="taskbar-search-input">Search</label>
+        <input id="taskbar-search-input" class="taskbar-search-input" type="search" name="q" placeholder="Search" aria-label="Search" aria-expanded="false" aria-controls="taskbar-search-results" autocomplete="off" spellcheck="false">
+        <div id="taskbar-search-results" class="taskbar-search-results" role="list" hidden></div>
+      </form>
     </footer>
   </main>
 
   <script src="/static/win-scrollbars.js" defer></script>
+  <script src="/static/taskbar-search.js" defer></script>
   <script src="/static/home.js" defer></script>
 </body>
 </html>

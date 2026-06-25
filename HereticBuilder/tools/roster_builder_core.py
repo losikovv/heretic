@@ -6,6 +6,7 @@ from roster_builder_catalog import RosterCatalogMixin
 from roster_builder_compositions import RosterCompositionMixin
 from roster_builder_rosters import RosterMutationMixin
 from roster_builder_rules import RosterRulesMixin
+from roster_builder_search import RosterSearchMixin
 from roster_builder_unit_options import RosterUnitOptionsMixin
 from roster_builder_wargear import WargearValidationMixin
 
@@ -16,6 +17,7 @@ class HereticBuilder(
     RosterUnitOptionsMixin,
     RosterCompositionMixin,
     RosterRulesMixin,
+    RosterSearchMixin,
     WargearValidationMixin,
 ):
     def __init__(self, db_path):

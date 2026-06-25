@@ -1,17 +1,17 @@
-import html
 import re
 
 from roster_builder_assets import FACTION_IMAGES_BY_ID, FACTION_IMAGES_BY_NAME, UNIT_IMAGES_BY_ID, UNIT_IMAGES_BY_NAME
+from roster_builder_codex_rich_text import (
+    core_rule_href,
+    escape_attr,
+    escape_html,
+    normalize_rule_reference_code,
+    normalize_rule_text,
+    render_rich_text,
+    render_rule_component,
+)
 from roster_builder_templates import render_template
 from roster_builder_utils import dict_row
-
-
-def escape_html(value):
-    return html.escape(str(value), quote=False)
-
-
-def escape_attr(value):
-    return html.escape(str(value), quote=True)
 
 
 def faction_image_url(image):
@@ -44,6 +44,34 @@ def datasheet_href(faction_id, datasheet_id):
 
 def detachment_href(faction_id, detachment_id):
     return f"/codex/faction/{faction_id}/detachment/{detachment_id}"
+
+
+CORE_RULES_PUBLICATION_ID = "4cdf7a87-0914-49e8-b5df-b9f8be4d13c6"
+FAQ_RELATION_COLUMNS = {
+    "datasheetId",
+    "armyRuleId",
+    "detachmentId",
+    "enhancementId",
+    "stratagemId",
+    "ruleContainerId",
+}
+CORE_RULES_INFERRED_FAQ_REFERENCES = {
+    "5928ab6e-7113-42c8-9085-4291faddae09": ("06.03", "24.15"),
+    "c2df3e97-f21e-4fc9-943e-37072c08c10e": ("18.02", "18.03", "18.04"),
+    "4978f15f-2b4a-4805-aacd-db9b5cad71bd": ("06.03", "09.07"),
+}
+
+
+def normalize_rule_section_code(value):
+    match = re.fullmatch(r"\s*(\d{1,2})(?:\..*)?\s*", str(value or ""))
+    if not match:
+        return ""
+    return f"{int(match.group(1)):02d}"
+
+
+def core_rule_section_href(section):
+    code = normalize_rule_section_code(section.get("name", ""))
+    return f"/codex/core-rules/section/{code}" if code else "/codex/core-rules/rules"
 
 
 def title_bar_context(hero_image=None, hero_image_url=None):
@@ -148,7 +176,7 @@ def render_codex_content_page(
 def render_codex_root_page():
     return render_codex_page(
         title="Codex",
-        window_title="Codex.exe",
+        window_title="Codex",
         task_title="Codex",
         page_class="codex-root-page",
         grid_label="Codex sections",
@@ -166,17 +194,452 @@ def render_codex_root_page():
 def render_core_rules_page():
     return render_codex_page(
         title="Core Rules",
-        window_title="CoreRules.exe",
+        window_title="CoreRules",
         task_title="Core Rules",
         page_class="core-rules-page",
         grid_label="Core Rules sections",
         back_href="/codex",
         back_label="Back to Codex",
         buttons=[
-            {"label": "Rules", "tag": "Reference", "route": "rules"},
-            {"label": "Stratagems", "tag": "Tactics", "route": "stratagems"},
-            {"label": "FAQ", "tag": "Updates", "route": "faq"},
+            {"label": "Rules", "tag": "Reference", "route": "rules", "href": "/codex/core-rules/rules"},
+            {"label": "Stratagems", "tag": "Tactics", "route": "stratagems", "href": "/codex/core-rules/stratagems"},
+            {"label": "FAQ", "tag": "Updates", "route": "faq", "href": "/codex/core-rules/faq"},
         ],
+    )
+
+
+def core_rule_sections(heretic_builder):
+    with heretic_builder.connect(readonly=True) as conn:
+        rows = conn.execute(
+            """
+            select rs.id, rs.name, rs.displayOrder,
+                   count(rc.id) as containerCount
+            from rule_section rs
+            left join rule_container rc on rc.ruleSectionId = rs.id
+            where rs.publicationId = ?
+            group by rs.id
+            order by rs.displayOrder, rs.name
+            """,
+            [CORE_RULES_PUBLICATION_ID],
+        ).fetchall()
+    return [dict_row(row) for row in rows]
+
+
+def core_rule_section_by_code(heretic_builder, code):
+    normalized = normalize_rule_section_code(code)
+    if not normalized:
+        raise ValueError("Rule section not found")
+    with heretic_builder.connect(readonly=True) as conn:
+        row = conn.execute(
+            """
+            select id, name, displayOrder
+            from rule_section
+            where publicationId = ?
+              and name like ?
+            order by displayOrder
+            limit 1
+            """,
+            [CORE_RULES_PUBLICATION_ID, f"{normalized}.%"],
+        ).fetchone()
+    if not row:
+        raise ValueError("Rule section not found")
+    return dict_row(row)
+
+
+def core_rule_containers_for_section(heretic_builder, section_id):
+    with heretic_builder.connect(readonly=True) as conn:
+        rows = conn.execute(
+            """
+            select rc.id, rc.title, rc.subtitle, rc.containerType, rc.displayOrder,
+                   s.cpCost, s.category,
+                   count(fc.faqId) as faqCount
+            from rule_container rc
+            left join stratagem s on s.id = rc.stratagemId
+            left join faq_config fc on fc.ruleContainerId = rc.id
+            where rc.ruleSectionId = ?
+            group by rc.id
+            order by rc.displayOrder, rc.subtitle, rc.title
+            """,
+            [section_id],
+        ).fetchall()
+    return [dict_row(row) for row in rows]
+
+
+def core_stratagem_containers(heretic_builder):
+    with heretic_builder.connect(readonly=True) as conn:
+        rows = conn.execute(
+            """
+            select rc.id, rc.title, rc.subtitle, rc.containerType, rc.displayOrder,
+                   s.cpCost, s.category,
+                   count(fc.faqId) as faqCount
+            from rule_container rc
+            join rule_section rs on rs.id = rc.ruleSectionId
+            left join stratagem s on s.id = rc.stratagemId
+            left join faq_config fc on fc.ruleContainerId = rc.id
+            where rs.publicationId = ?
+              and rc.containerType = 'stratagem'
+            group by rc.id
+            order by rc.displayOrder, rc.subtitle, rc.title
+            """,
+            [CORE_RULES_PUBLICATION_ID],
+        ).fetchall()
+    return [dict_row(row) for row in rows]
+
+
+def core_rule_faqs(heretic_builder):
+    with heretic_builder.connect(readonly=True) as conn:
+        rows = conn.execute(
+            """
+            select id, errataHeader, errataText, question, answer, displayOrder
+            from faq
+            where publicationId = ?
+            order by displayOrder, id
+            """,
+            [CORE_RULES_PUBLICATION_ID],
+        ).fetchall()
+    return [dict_row(row) for row in rows]
+
+
+def render_rule_container_item(container):
+    meta = [container["subtitle"], container["containerType"].replace("behaviourType", "movement")]
+    if container.get("cpCost"):
+        meta.append(f'{container["cpCost"]} CP')
+    if container.get("category"):
+        meta.append(container["category"])
+    if container.get("faqCount"):
+        meta.append(f'{container["faqCount"]} FAQ')
+    return render_list_item(
+        container["title"],
+        " / ".join(item for item in meta if item),
+        href=core_rule_href(container["subtitle"]),
+    )
+
+
+def render_core_rules_rules_page(heretic_builder):
+    sections = core_rule_sections(heretic_builder)
+    items_html = "".join(
+        render_list_item(
+            section["name"],
+            f'{section["containerCount"]} rules',
+            href=core_rule_section_href(section),
+        )
+        for section in sections
+    )
+    content_html = f'<div class="list-grid core-rules-list-grid">{items_html}</div>'
+    return render_codex_content_page(
+        title="Core Rules",
+        window_title="Core Rules",
+        task_title="Core Rules / Rules",
+        page_class="faction-detail-page core-rules-list-page",
+        content_html=content_html,
+        back_href="/codex/core-rules",
+        back_label="Back to Core Rules",
+    )
+
+
+def render_core_rules_section_page(heretic_builder, section_code):
+    section = core_rule_section_by_code(heretic_builder, section_code)
+    containers = core_rule_containers_for_section(heretic_builder, section["id"])
+    items_html = "".join(render_rule_container_item(container) for container in containers)
+    content_html = f'<div class="list-grid core-rules-list-grid">{items_html}</div>'
+    return render_codex_content_page(
+        title=section["name"],
+        window_title=section["name"],
+        task_title=f'Core Rules / {section["name"]}',
+        page_class="faction-detail-page core-rules-list-page",
+        content_html=content_html,
+        back_href="/codex/core-rules/rules",
+        back_label="Back to Core Rules",
+    )
+
+
+def render_core_stratagems_page(heretic_builder):
+    stratagems = core_stratagem_containers(heretic_builder)
+    items_html = "".join(render_rule_container_item(stratagem) for stratagem in stratagems)
+    content_html = f'<div class="list-grid core-rules-list-grid">{items_html}</div>'
+    return render_codex_content_page(
+        title="Core Stratagems",
+        window_title="Core Stratagems",
+        task_title="Core Rules / Stratagems",
+        page_class="faction-detail-page core-rules-list-page",
+        content_html=content_html,
+        back_href="/codex/core-rules",
+        back_label="Back to Core Rules",
+    )
+
+
+def has_errata(faq):
+    return bool(normalize_rule_text(faq.get("errataHeader")) or normalize_rule_text(faq.get("errataText")))
+
+
+def has_faq(faq):
+    return bool(normalize_rule_text(faq.get("question")) or normalize_rule_text(faq.get("answer")))
+
+
+def render_errata_card(faq, current_rule_reference=None):
+    pieces = []
+    if normalize_rule_text(faq.get("errataHeader")):
+        pieces.append(f'<h3>{escape_html(normalize_rule_text(faq["errataHeader"]))}</h3>')
+    if normalize_rule_text(faq.get("errataText")):
+        pieces.append(render_rich_text(faq["errataText"], current_rule_reference))
+    if not pieces:
+        return ""
+    return f'<section class="rule-card faq-card errata-card"><div class="faq-card-kicker">Errata</div>{"".join(pieces)}</section>'
+
+
+def render_faq_card(faq, current_rule_reference=None):
+    pieces = []
+    if normalize_rule_text(faq.get("question")):
+        pieces.append(f'<div class="faq-question">{render_rich_text(faq["question"], current_rule_reference)}</div>')
+    if normalize_rule_text(faq.get("answer")):
+        pieces.append(f'<div class="faq-answer">{render_rich_text(faq["answer"], current_rule_reference)}</div>')
+    if not pieces:
+        return ""
+    return f'<section class="rule-card faq-card question-card"><div class="faq-card-kicker">FAQ</div>{"".join(pieces)}</section>'
+
+
+def render_faq_section(title, faqs, current_rule_reference=None):
+    cards = "".join(render_faq_card(faq, current_rule_reference) for faq in faqs if has_faq(faq))
+    if not cards:
+        return ""
+    title_html = f'<h2 class="detachment-section-title">{escape_html(title)}</h2>' if title else ""
+    return (
+        f'<section class="codex-content faq-section">'
+        f'{title_html}'
+        f'{cards}'
+        f'</section>'
+    )
+
+
+def render_errata_section(title, faqs, current_rule_reference=None):
+    cards = "".join(render_errata_card(faq, current_rule_reference) for faq in faqs if has_errata(faq))
+    if not cards:
+        return ""
+    title_html = f'<h2 class="detachment-section-title">{escape_html(title)}</h2>' if title else ""
+    return (
+        f'<section class="codex-content faq-section errata-section">'
+        f'{title_html}'
+        f'{cards}'
+        f'</section>'
+    )
+
+
+def render_faq_update_sections(faqs, errata_title="Errata", faq_title="FAQ", current_rule_reference=None):
+    return (
+        render_errata_section(errata_title, faqs, current_rule_reference)
+        + render_faq_section(faq_title, faqs, current_rule_reference)
+    )
+
+
+def faqs_for_entity(heretic_builder, relation_column, relation_id):
+    if relation_column not in FAQ_RELATION_COLUMNS:
+        raise ValueError("Unsupported FAQ relation")
+    if not relation_id:
+        return []
+    with heretic_builder.connect(readonly=True) as conn:
+        rows = conn.execute(
+            f"""
+            select distinct f.id, f.errataHeader, f.errataText, f.question, f.answer, f.displayOrder
+            from faq_config fc
+            join faq f on f.id = fc.faqId
+            where fc.{relation_column} = ?
+            order by f.displayOrder, f.id
+            """,
+            [relation_id],
+        ).fetchall()
+    return [dict_row(row) for row in rows]
+
+
+def attach_faqs(heretic_builder, items, relation_column):
+    for item in items:
+        item["faqs"] = faqs_for_entity(heretic_builder, relation_column, item["id"])
+    return items
+
+
+def rule_reference_codes_from_faq(faq):
+    text = " ".join(
+        str(faq.get(key) or "")
+        for key in ("errataHeader", "errataText", "question", "answer")
+    )
+    return {
+        normalize_rule_reference_code(match.group(1))
+        for match in re.finditer(r"\((\d{1,2}(?:\.\d{1,2})?)\)", text)
+        if normalize_rule_reference_code(match.group(1))
+    }
+
+
+def related_faqs_for_core_rule(conn, rule_container_id, reference):
+    normalized = normalize_rule_reference_code(reference)
+    faq_by_id = {}
+    explicit_rows = conn.execute(
+        """
+        select f.id, f.errataHeader, f.errataText, f.question, f.answer, f.displayOrder
+        from faq_config fc
+        join faq f on f.id = fc.faqId
+        where fc.ruleContainerId = ?
+        """,
+        [rule_container_id],
+    ).fetchall()
+    for row in explicit_rows:
+        faq = dict_row(row)
+        faq_by_id[faq["id"]] = faq
+
+    core_rows = conn.execute(
+        """
+        select id, errataHeader, errataText, question, answer, displayOrder
+        from faq
+        where publicationId = ?
+        """,
+        [CORE_RULES_PUBLICATION_ID],
+    ).fetchall()
+    for row in core_rows:
+        faq = dict_row(row)
+        inferred_codes = set(CORE_RULES_INFERRED_FAQ_REFERENCES.get(faq["id"], ()))
+        inferred_codes.update(rule_reference_codes_from_faq(faq))
+        if normalized in inferred_codes:
+            faq_by_id[faq["id"]] = faq
+
+    return sorted(faq_by_id.values(), key=lambda faq: (faq["displayOrder"], faq["id"]))
+
+
+def render_core_faq_page(heretic_builder):
+    faqs = core_rule_faqs(heretic_builder)
+    content_html = render_faq_update_sections(faqs) or '<div class="empty-state">No FAQ or errata found.</div>'
+    return render_codex_content_page(
+        title="Core Rules FAQ",
+        window_title="Core Rules\nFAQ",
+        task_title="Core Rules / FAQ",
+        page_class="faction-detail-page core-rules-faq-page",
+        content_html=content_html,
+        back_href="/codex/core-rules",
+        back_label="Back to Core Rules",
+    )
+
+
+def core_rule_by_reference(heretic_builder, reference):
+    normalized = normalize_rule_reference_code(reference)
+    if not normalized:
+        raise ValueError("Rule reference not found")
+    with heretic_builder.connect(readonly=True) as conn:
+        rule = conn.execute(
+            """
+            select rc.id, rc.title, rc.subtitle, rc.containerType, rc.behaviourTypeId, rc.stratagemId
+            from rule_container rc
+            join rule_section rs on rs.id = rc.ruleSectionId
+            where rc.subtitle = ?
+              and rs.publicationId = ?
+            """,
+            [normalized, CORE_RULES_PUBLICATION_ID],
+        ).fetchone()
+        if not rule:
+            raise ValueError("Rule reference not found")
+        result = dict_row(rule)
+        result["components"] = [
+            dict_row(row)
+            for row in conn.execute(
+                """
+                select type, title, textContent, trigger, effect, imageUrl, altText, displayOrder
+                from rule_container_component
+                where ruleContainerId = ?
+                order by displayOrder
+                """,
+                [result["id"]],
+            )
+        ]
+        result["behaviourType"] = None
+        result["stratagem"] = None
+        result["faqs"] = related_faqs_for_core_rule(conn, result["id"], normalized)
+        if result.get("stratagemId"):
+            stratagem = conn.execute(
+                """
+                select id, name, lore, whenRules, targetRules, effectRules, restrictionRules,
+                       cpCost, category, secondaryEffectAdditionalCPCost,
+                       secondaryEffectIsMutuallyExclusive, secondaryEffect
+                from stratagem
+                where id = ?
+                """,
+                [result["stratagemId"]],
+            ).fetchone()
+            if stratagem:
+                result["stratagem"] = dict_row(stratagem)
+        if result.get("behaviourTypeId"):
+            behaviour = conn.execute(
+                """
+                select *
+                from behaviour_type
+                where id = ?
+                """,
+                [result["behaviourTypeId"]],
+            ).fetchone()
+            if behaviour:
+                result["behaviourType"] = dict_row(behaviour)
+    return result
+
+
+def render_behaviour_type(behaviour, current_rule_reference=None):
+    fields = (
+        ("eligibleIf", "Eligible If"),
+        ("effect", "Effect"),
+        ("maximumDistance", "Maximum Distance"),
+        ("setupDistance", "Set-up Distance"),
+        ("beforeMoving", "Before Moving"),
+        ("whileMoving", "While Moving"),
+        ("afterMoving", "After Moving"),
+        ("beforeFighting", "Before Fighting"),
+        ("whileFighting", "While Fighting"),
+        ("afterFighting", "After Fighting"),
+        ("beforeShooting", "Before Shooting"),
+        ("whileShooting", "While Shooting"),
+        ("afterShooting", "After Shooting"),
+    )
+    cards = []
+    for key, label in fields:
+        value = behaviour.get(key)
+        if not normalize_rule_text(value):
+            continue
+        cards.append(
+            f'<section class="rule-card core-rule-field-card">'
+            f'<h3>{escape_html(label)}</h3>'
+            f'{render_rich_text(value, current_rule_reference)}'
+            f'</section>'
+        )
+    return "".join(cards)
+
+
+def render_core_rule_page(heretic_builder, reference):
+    rule = core_rule_by_reference(heretic_builder, reference)
+    current_rule_reference = rule["subtitle"]
+    heading = f'{rule["subtitle"]} {rule["title"]}' if rule.get("subtitle") else rule["title"]
+    sections = [
+        f'<section class="rule-card core-rule-heading-card">'
+        f'<div class="core-rule-number">{escape_html(rule["subtitle"])}</div>'
+        f'<h2>{escape_html(rule["title"])}</h2>'
+        f'</section>'
+    ]
+    sections.extend(render_rule_component(component, current_rule_reference) for component in rule["components"])
+    if rule.get("stratagem"):
+        sections.append(render_stratagem_card(rule["stratagem"], current_rule_reference))
+    if rule.get("behaviourType"):
+        sections.append(render_behaviour_type(rule["behaviourType"], current_rule_reference))
+    faq_html = render_faq_update_sections(
+        rule.get("faqs") or [],
+        errata_title="",
+        faq_title="",
+        current_rule_reference=current_rule_reference,
+    )
+    if faq_html:
+        sections.append(faq_html)
+    if len([section for section in sections if section]) == 1:
+        sections.append('<section class="rule-card"><p>No rule text found.</p></section>')
+    content_html = '<article class="codex-content core-rule-content">' + "".join(section for section in sections if section) + "</article>"
+    return render_codex_content_page(
+        title=heading,
+        window_title=heading,
+        task_title=f"Core Rules / {heading}",
+        page_class="core-rule-page",
+        content_html=content_html,
+        back_href="/codex/core-rules",
+        back_label="Back to Core Rules",
     )
 
 
@@ -202,7 +665,7 @@ ADEPTUS_ASTARTES_FACTION_ID = "01623188-9470-4441-96b0-e06eb2572bb5"
 FACTION_GROUPS = {
     "imperium": {
         "title": "Imperium",
-        "window_title": "Imperium.exe",
+        "window_title": "Imperium",
         "ids": {
             "aee1b46d-3461-4d5d-a612-0efd05dd843d",
             "6cc4ee5e-3bc6-4142-8147-2e1a9fb6e82c",
@@ -215,7 +678,7 @@ FACTION_GROUPS = {
     },
     "chaos": {
         "title": "Chaos",
-        "window_title": "Chaos.exe",
+        "window_title": "Chaos",
         "ids": {
             "2e79f9cd-94dc-48ca-bddf-6d5e877609c5",
             "19176137-2faa-4d6e-adb4-2572510032b7",
@@ -229,7 +692,7 @@ FACTION_GROUPS = {
     },
     "xenos": {
         "title": "Xenos",
-        "window_title": "Xenos.exe",
+        "window_title": "Xenos",
         "ids": {
             "2cb72f92-bfc7-4d2c-a183-b2bff6b26bfc",
             "43bbfe97-4c14-47be-be2b-90de3e6756b1",
@@ -287,7 +750,7 @@ def render_adeptus_astartes_page(heretic_builder):
     ]
     return render_codex_page(
         title="Adeptus Astartes",
-        window_title="AdeptusAstartes.exe",
+        window_title="AdeptusAstartes",
         task_title="Adeptus Astartes",
         page_class="faction-list-page",
         grid_label="Adeptus Astartes factions",
@@ -339,7 +802,7 @@ def render_faction_page(heretic_builder, faction_id):
     base_href = faction_href(faction["id"])
     return render_codex_page(
         title=faction["name"],
-        window_title=f"{faction['name']}.exe",
+        window_title=f"{faction['name']}",
         task_title=faction["name"],
         page_class="faction-home-page",
         grid_label=f"{faction['name']} sections",
@@ -354,52 +817,6 @@ def render_faction_page(heretic_builder, faction_id):
     )
 
 
-def normalize_rule_text(value):
-    text = html.unescape(str(value or "").replace("\r\n", "\n").replace("\r", "\n"))
-    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"</?(?:b|strong|k|u)>", "**", text, flags=re.IGNORECASE)
-    text = re.sub(r"<ul[^>]*>\s*<li[^>]*>", "\n■ ", text, flags=re.IGNORECASE)
-    text = re.sub(r"</li>\s*<li[^>]*>", "\n■ ", text, flags=re.IGNORECASE)
-    text = re.sub(r"</li>\s*</ul>", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", "", text)
-    return text.strip()
-
-
-def render_rich_text(value):
-    text = escape_html(normalize_rule_text(value))
-    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    paragraphs = [paragraph.strip() for paragraph in text.split("\n\n") if paragraph.strip()]
-    if not paragraphs and text:
-        paragraphs = [text]
-    return "".join(f"<p>{paragraph.replace(chr(10), '<br>')}</p>" for paragraph in paragraphs)
-
-
-def render_rule_component(component):
-    component_type = component.get("type") or ""
-    title = component.get("title") or ""
-    text = component.get("textContent") or ""
-    classes = ["rule-card"]
-    if "lore" in component_type.lower():
-        classes.append("is-lore")
-
-    if component_type == "header":
-        heading = title or text
-        return f'<section class="{" ".join(classes)}"><h3>{escape_html(heading)}</h3></section>'
-
-    pieces = []
-    if title:
-        pieces.append(f"<h3>{escape_html(title)}</h3>")
-    if text:
-        pieces.append(render_rich_text(text))
-    if component.get("trigger"):
-        pieces.append(f"<h3>Trigger</h3>{render_rich_text(component['trigger'])}")
-    if component.get("effect"):
-        pieces.append(f"<h3>Effect</h3>{render_rich_text(component['effect'])}")
-    if not pieces:
-        return ""
-    return f'<section class="{" ".join(classes)}">{"".join(pieces)}</section>'
-
-
 def rule_components_for(conn, relation_column, relation_id):
     if relation_column not in {"armyRuleId", "detachmentRuleId"}:
         raise ValueError("Unsupported rule component relation")
@@ -407,10 +824,10 @@ def rule_components_for(conn, relation_column, relation_id):
         dict_row(row)
         for row in conn.execute(
             f"""
-            select type, title, textContent, trigger, effect, displayOrder
-            from rule_container_component
-            where {relation_column} = ?
-            order by displayOrder
+                select type, title, textContent, trigger, effect, imageUrl, altText, displayOrder
+                from rule_container_component
+                where {relation_column} = ?
+                order by displayOrder
             """,
             [relation_id],
         )
@@ -435,6 +852,19 @@ def army_rules_for_faction(heretic_builder, faction_id):
         ]
         for rule in rules:
             rule["components"] = rule_components_for(conn, "armyRuleId", rule["id"])
+            rule["faqs"] = [
+                dict_row(row)
+                for row in conn.execute(
+                    """
+                    select distinct f.id, f.errataHeader, f.errataText, f.question, f.answer, f.displayOrder
+                    from faq_config fc
+                    join faq f on f.id = fc.faqId
+                    where fc.armyRuleId = ?
+                    order by f.displayOrder, f.id
+                    """,
+                    [rule["id"]],
+                )
+            ]
     return rules
 
 
@@ -451,12 +881,13 @@ def render_faction_army_rule_page(heretic_builder, faction_id):
                 f'<article class="codex-content">'
                 f'<section class="rule-card"><h2>{escape_html(rule["name"])}</h2></section>'
                 f'{components}'
+                f'{render_faq_update_sections(rule.get("faqs") or [], errata_title="", faq_title="")}'
                 f'</article>'
             )
         content_html = '<div class="codex-content">' + "".join(rule_html) + "</div>"
     return render_codex_content_page(
         title=f"{faction['name']} Army Rule",
-        window_title=f"{faction['name']}\nRule.exe",
+        window_title=f"{faction['name']}\nRule",
         task_title=f"{faction['name']} / Army Rule",
         page_class="faction-detail-page",
         content_html=content_html,
@@ -899,24 +1330,24 @@ def render_detachment_enhancements(enhancements):
     return render_section_title("Enhancements") + '<div class="detachment-card-grid">' + cards + "</div>"
 
 
-def render_lore_block(text):
+def render_lore_block(text, current_rule_reference=None):
     if not text or not normalize_rule_text(text):
         return ""
-    return f'<div class="detachment-lore">{render_rich_text(text)}</div>'
+    return f'<div class="detachment-lore">{render_rich_text(text, current_rule_reference)}</div>'
 
 
-def render_stratagem_rule(label, text):
+def render_stratagem_rule(label, text, current_rule_reference=None):
     if not text or not normalize_rule_text(text):
         return ""
     return (
         '<div class="stratagem-rule-block">'
         f'<div class="stratagem-rule-label">{escape_html(label)}</div>'
-        f'{render_rich_text(text)}'
+        f'{render_rich_text(text, current_rule_reference)}'
         '</div>'
     )
 
 
-def render_stratagem_card(stratagem):
+def render_stratagem_card(stratagem, current_rule_reference=None):
     tags = []
     if stratagem.get("cpCost"):
         tags.append(f'{stratagem["cpCost"]} CP')
@@ -927,13 +1358,13 @@ def render_stratagem_card(stratagem):
     if stratagem.get("secondaryEffectAdditionalCPCost") is not None:
         secondary_label = f'Secondary Effect (+{stratagem["secondaryEffectAdditionalCPCost"]} CP)'
     pieces = [
-        render_stratagem_rule("When", stratagem.get("whenRules")),
-        render_stratagem_rule("Target", stratagem.get("targetRules")),
-        render_stratagem_rule("Effect", stratagem.get("effectRules")),
-        render_stratagem_rule("Restrictions", stratagem.get("restrictionRules")),
-        render_stratagem_rule(secondary_label, stratagem.get("secondaryEffect")),
+        render_stratagem_rule("When", stratagem.get("whenRules"), current_rule_reference),
+        render_stratagem_rule("Target", stratagem.get("targetRules"), current_rule_reference),
+        render_stratagem_rule("Effect", stratagem.get("effectRules"), current_rule_reference),
+        render_stratagem_rule("Restrictions", stratagem.get("restrictionRules"), current_rule_reference),
+        render_stratagem_rule(secondary_label, stratagem.get("secondaryEffect"), current_rule_reference),
     ]
-    lore_html = render_lore_block(stratagem["lore"]) if stratagem.get("lore") else ""
+    lore_html = render_lore_block(stratagem["lore"], current_rule_reference) if stratagem.get("lore") else ""
     return (
         '<section class="rule-card detachment-feature-card stratagem-card">'
         '<div class="unit-card-heading">'
@@ -960,16 +1391,39 @@ def render_faction_detachment_page(heretic_builder, faction_id, detachment_id):
     details = detachment_details_for(heretic_builder, detachment["id"])
     enhancements = detachment_enhancements_for(heretic_builder, detachment["id"])
     stratagems = detachment_stratagems_for(heretic_builder, detachment["id"])
+    attach_faqs(heretic_builder, enhancements, "enhancementId")
+    attach_faqs(heretic_builder, stratagems, "stratagemId")
 
     sections = []
     sections.extend(render_rule_article(rule["name"], rule["components"]) for rule in rules)
     sections.append(render_detachment_details(details))
     sections.append(render_detachment_enhancements(enhancements))
     sections.append(render_detachment_stratagems(stratagems))
+    sections.append(render_faq_update_sections(
+        faqs_for_entity(heretic_builder, "detachmentId", detachment["id"]),
+        errata_title="Detachment Errata",
+        faq_title="Detachment FAQ",
+    ))
+    sections.extend(
+        render_faq_update_sections(
+            enhancement.get("faqs") or [],
+            errata_title=f'{enhancement["name"]} Errata',
+            faq_title=f'{enhancement["name"]} FAQ',
+        )
+        for enhancement in enhancements
+    )
+    sections.extend(
+        render_faq_update_sections(
+            stratagem.get("faqs") or [],
+            errata_title=f'{stratagem["name"]} Errata',
+            faq_title=f'{stratagem["name"]} FAQ',
+        )
+        for stratagem in stratagems
+    )
     content_html = '<div class="codex-content detachment-detail-content">' + "".join(section for section in sections if section) + "</div>"
     return render_codex_content_page(
         title=f"{detachment['name']} Detachment",
-        window_title=f"{detachment['name']}\nDetachment.exe",
+        window_title=f"{detachment['name']}\nDetachment",
         task_title=f"{faction['name']} / {detachment['name']}",
         page_class="faction-detail-page detachment-detail-page",
         content_html=content_html,
@@ -996,7 +1450,7 @@ def render_faction_detachments_page(heretic_builder, faction_id):
         content_html = '<div class="empty-state">No detachments found.</div>'
     return render_codex_content_page(
         title=f"{faction['name']} Detachments",
-        window_title=f"{faction['name']}\nDetachments.exe",
+        window_title=f"{faction['name']}\nDetachments",
         task_title=f"{faction['name']} / Detachments",
         page_class="faction-detail-page many-buttons-page",
         content_html=content_html,
@@ -1024,7 +1478,7 @@ def render_faction_datasheets_page(heretic_builder, faction_id):
         content_html = '<div class="empty-state">No datasheets found.</div>'
     return render_codex_content_page(
         title=f"{faction['name']} Data Sheets",
-        window_title=f"{faction['name']}\nData Sheets.exe",
+        window_title=f"{faction['name']}\nData Sheets",
         task_title=f"{faction['name']} / Data Sheets",
         page_class="faction-detail-page many-buttons-page",
         content_html=content_html,

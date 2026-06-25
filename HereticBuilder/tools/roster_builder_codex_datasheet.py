@@ -5,9 +5,11 @@ from roster_builder_codex import (
     escape_html,
     faction_by_id,
     faction_href,
+    faqs_for_entity,
     find_unit_image,
     normalize_rule_text,
     render_codex_content_page,
+    render_faq_update_sections,
     render_rich_text,
     unit_image_url,
 )
@@ -724,6 +726,15 @@ def text_info_card(title, text, class_name=""):
     }
 
 
+def render_datasheet_lore(text):
+    if is_empty_rule(text):
+        return ""
+    return render_template(
+        "codex_unit_lore.html",
+        body_html=render_rich_text(text),
+    )
+
+
 def ability_info_card(ability):
     tags = []
     if ability.get("abilityType"):
@@ -868,10 +879,16 @@ def render_datasheet_page(heretic_builder, faction_id, datasheet_id):
         info_html="".join(section for section in info_sections if section),
         wargear_rules_html=render_wargear_rules_section(detail["wargearRules"]),
     )
+    content_html += render_faq_update_sections(
+        faqs_for_entity(heretic_builder, "datasheetId", datasheet_id),
+        errata_title="",
+        faq_title="",
+    )
+    content_html += render_datasheet_lore(datasheet.get("lore"))
 
     return render_codex_content_page(
         title=datasheet["name"],
-        window_title=f"{datasheet['name']}.exe",
+        window_title=f"{datasheet['name']}",
         task_title=f"{faction['name']} / {datasheet['name']}",
         page_class="faction-detail-page unit-detail-page",
         content_html=content_html,

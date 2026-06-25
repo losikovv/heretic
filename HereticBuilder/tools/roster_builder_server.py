@@ -9,7 +9,12 @@ from roster_builder_assets import DEFAULT_DB, FACTION_IMAGE_ROOT, ICON_ASSETS, S
 from roster_builder_codex import (
     render_adeptus_astartes_page,
     render_codex_root_page,
+    render_core_faq_page,
+    render_core_rule_page,
     render_core_rules_page,
+    render_core_rules_rules_page,
+    render_core_rules_section_page,
+    render_core_stratagems_page,
     render_faction_army_rule_page,
     render_faction_datasheets_page,
     render_faction_detachment_page,
@@ -117,6 +122,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_html(render_codex_root_page())
             elif parsed.path == "/codex/core-rules":
                 self.send_html(render_core_rules_page())
+            elif parsed.path == "/codex/core-rules/rules":
+                self.send_html(render_core_rules_rules_page(self.heretic_builder))
+            elif parsed.path == "/codex/core-rules/stratagems":
+                self.send_html(render_core_stratagems_page(self.heretic_builder))
+            elif parsed.path == "/codex/core-rules/faq":
+                self.send_html(render_core_faq_page(self.heretic_builder))
+            elif parsed.path.startswith("/codex/core-rules/section/"):
+                self.send_html(render_core_rules_section_page(
+                    self.heretic_builder,
+                    unquote(parsed.path.removeprefix("/codex/core-rules/section/")),
+                ))
+            elif parsed.path.startswith("/codex/core-rules/rule/"):
+                self.send_html(render_core_rule_page(
+                    self.heretic_builder,
+                    unquote(parsed.path.removeprefix("/codex/core-rules/rule/")),
+                ))
             elif parsed.path.startswith("/codex/faction/"):
                 self.send_faction_codex_page(parsed.path)
             elif parsed.path == "/codex/imperium":
@@ -135,6 +156,11 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path.startswith("/assets/unit-images/"):
                 filename = Path(unquote(parsed.path)).name
                 self.send_png(UNIT_IMAGE_ROOT / filename)
+            elif parsed.path == "/api/search":
+                self.send_json(self.heretic_builder.search(
+                    params.get("q", [""])[0],
+                    params.get("limit", ["30"])[0],
+                ))
             elif parsed.path == "/api/bootstrap":
                 self.send_json(self.heretic_builder.bootstrap())
             elif parsed.path == "/api/detachments":
