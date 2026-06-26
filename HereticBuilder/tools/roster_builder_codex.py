@@ -1333,7 +1333,7 @@ def render_detachment_enhancements(enhancements):
 def render_lore_block(text, current_rule_reference=None):
     if not text or not normalize_rule_text(text):
         return ""
-    return f'<div class="detachment-lore">{render_rich_text(text, current_rule_reference)}</div>'
+    return f'<div class="detachment-lore lore-flavor-card">{render_rich_text(text, current_rule_reference)}</div>'
 
 
 def render_stratagem_rule(label, text, current_rule_reference=None):

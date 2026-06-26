@@ -160,6 +160,9 @@ def render_rule_component(component, current_rule_reference=None):
     image_url = normalize_rule_text(component.get("imageUrl"))
     classes = ["rule-card"]
     accent_color = rule_component_accent_color(component.get("backgroundColor"))
+    is_flavor_text = "lore" in component_type.lower() or component_type == "quote"
+    if is_flavor_text:
+        classes.append("lore-flavor-card")
     if "lore" in component_type.lower():
         classes.append("is-lore")
     if component_type == "quote":

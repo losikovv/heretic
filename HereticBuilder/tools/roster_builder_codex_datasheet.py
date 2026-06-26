@@ -755,7 +755,9 @@ def ability_info_card(ability):
     if not is_empty_rule(ability.get("rules")):
         body_parts.append(render_rich_text(ability["rules"]))
     if not is_empty_rule(ability.get("lore")):
-        body_parts.append(render_rich_text(ability["lore"]))
+        body_parts.append(
+            f'<div class="unit-ability-lore lore-flavor-card">{render_rich_text(ability["lore"])}</div>'
+        )
 
     sub_abilities = []
     if ability.get("subAbilities"):
