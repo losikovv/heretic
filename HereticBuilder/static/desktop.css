@@ -153,23 +153,7 @@
       height: 0;
     }
 
-    .panel.is-scrollable .panel-content {
-      padding-right: var(--win-scrollbar-size);
-    }
-
     .win-scrollbar {
-      position: absolute;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      width: var(--win-scrollbar-size);
-      display: grid;
-      grid-template-rows: var(--win-scrollbar-size) minmax(0, 1fr) var(--win-scrollbar-size);
-      background: var(--window);
-      z-index: 2;
-    }
-
-    .win-scrollbar[hidden] {
       display: none;
     }
 
@@ -482,10 +466,6 @@
       height: 0;
     }
 
-    .taskbar-search-results.has-search-scrollbar .taskbar-search-results-list {
-      padding-right: var(--win-scrollbar-size);
-    }
-
     .taskbar-search-scrollbar {
       top: 0;
       right: 0;
@@ -558,10 +538,6 @@
       .panel-content {
         padding: 16px;
         gap: 14px;
-      }
-
-      .panel.is-scrollable .panel-content {
-        padding-right: var(--win-scrollbar-size);
       }
 
       .taskbar {
