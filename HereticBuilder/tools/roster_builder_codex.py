@@ -915,12 +915,17 @@ def render_list_item(title, meta, href=None, extra_class=""):
     )
 
 
-def detachment_meta(detachment):
+def detachment_meta_items(detachment):
     meta = []
     if detachment.get("detachmentPointsCost") is not None:
-        meta.append(f'{detachment["detachmentPointsCost"]} RP')
+        meta.append(f'{detachment["detachmentPointsCost"]} DP')
     if detachment.get("isCombatPatrol"):
         meta.append("Combat Patrol")
+    return meta
+
+
+def detachment_meta(detachment):
+    meta = detachment_meta_items(detachment)
     return " / ".join(meta)
 
 
@@ -1384,6 +1389,20 @@ def render_detachment_stratagems(stratagems):
     return render_section_title("Stratagems") + '<div class="detachment-card-grid stratagem-grid">' + cards + "</div>"
 
 
+def render_detachment_summary_card(detachment):
+    tags = detachment_meta_items(detachment)
+    tag_html = "".join(f'<span class="unit-card-tag">{escape_html(tag)}</span>' for tag in tags)
+    tag_row_html = f'<div class="detachment-tag-row">{tag_html}</div>' if tag_html else ""
+    return (
+        '<section class="rule-card detachment-detail-card detachment-summary-card">'
+        '<div class="unit-card-heading">'
+        f'<h2>{escape_html(detachment["name"])}</h2>'
+        f'{tag_row_html}'
+        '</div>'
+        '</section>'
+    )
+
+
 def render_faction_detachment_page(heretic_builder, faction_id, detachment_id):
     faction = faction_by_id(heretic_builder, faction_id)
     detachment = detachment_by_id_for_faction(heretic_builder, faction["id"], detachment_id)
@@ -1394,7 +1413,7 @@ def render_faction_detachment_page(heretic_builder, faction_id, detachment_id):
     attach_faqs(heretic_builder, enhancements, "enhancementId")
     attach_faqs(heretic_builder, stratagems, "stratagemId")
 
-    sections = []
+    sections = [render_detachment_summary_card(detachment)]
     sections.extend(render_rule_article(rule["name"], rule["components"]) for rule in rules)
     sections.append(render_detachment_details(details))
     sections.append(render_detachment_enhancements(enhancements))
