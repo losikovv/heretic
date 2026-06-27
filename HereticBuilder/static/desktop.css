@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap');
+
 :root {
       color-scheme: light;
       --desktop: #008080;
@@ -14,6 +16,18 @@
       --red: #b00020;
       --font: Tahoma, "MS Sans Serif", Arial, sans-serif;
       --win-scrollbar-size: 24px;
+
+      /* design system additions */
+      --bevel-raised: var(--light) var(--shadow) var(--shadow) var(--light);
+      --bevel-inset:  var(--shadow) var(--light) var(--light) var(--shadow);
+      --inset-hi:     inset 0 1px 0 var(--light);
+      --panel:        #cdcdcd;
+      --tile:         #dadada;
+      --accent:       #7c1414;
+      --accent-ink:   #fff5f5;
+      --lore-bg:      #e9dcc0;
+      --lore-ink:     #2c2417;
+      --font-pixel:   "Silkscreen", "Courier New", monospace;
     }
 
     * {
