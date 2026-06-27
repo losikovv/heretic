@@ -921,10 +921,10 @@
     .unit-lore-card,
     .detachment-lore {
       padding: 10px 12px;
-      color: #2c2518;
+      color: var(--lore-ink);
       background:
         linear-gradient(180deg, rgba(255, 255, 255, .38), transparent 36%),
-        #efe2c2;
+        var(--lore-bg);
       border-style: solid;
       border-width: 2px 2px 2px 6px;
       border-color: #fff8df #8f7e5b #8f7e5b #8a6a2e;
@@ -937,7 +937,7 @@
     .rule-card.is-quote h3,
     .lore-flavor-card h3,
     .unit-lore-card h3 {
-      color: #5b3f18;
+      color: var(--lore-ink);
       font-size: 13px;
       line-height: 1.12;
       text-transform: uppercase;
