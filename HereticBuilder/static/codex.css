@@ -214,6 +214,7 @@
     }
 
     .rule-card-subtitle {
+      font-family: var(--font-pixel);
       display: inline-flex;
       max-width: 100%;
       padding: 2px 7px;
@@ -221,6 +222,7 @@
       color: var(--light);
       font-size: 12px;
       font-weight: 800;
+      text-transform: uppercase;
       line-height: 1.1;
       text-shadow: 1px 1px 0 var(--ink);
     }
@@ -847,13 +849,16 @@
     }
 
     .detachment-section-title {
+      font-family: var(--font-pixel);
       margin: 2px 0 0;
       padding: 5px 8px;
-      background: var(--title);
+      background: linear-gradient(90deg, var(--title), var(--title-hot));
       color: var(--light);
-      font-size: 18px;
+      font-size: 13px;
+      letter-spacing: 0.05em;
       line-height: 1.1;
       text-shadow: 1px 1px 0 var(--ink);
+      text-transform: uppercase;
     }
 
     .detachment-card-grid {
