@@ -77,6 +77,7 @@
     }
 
     .codex-page .section-tag {
+      font-family: var(--font-pixel);
       min-height: 26px;
       display: inline-flex;
       align-items: center;
@@ -346,6 +347,7 @@
     }
 
     .faq-card-kicker {
+      font-family: var(--font-pixel);
       width: fit-content;
       max-width: 100%;
       padding: 2px 6px;
@@ -418,6 +420,7 @@
     }
 
     .unit-keyword-tag {
+      font-family: var(--font-pixel);
       display: inline-flex;
       max-width: 100%;
       padding: 1px 5px;
@@ -434,6 +437,7 @@
     }
 
     .unit-faction-ability-tag {
+      font-family: var(--font-pixel);
       background: #006b53;
       border-color: #10a37f #003c2f #003c2f #10a37f;
     }
@@ -490,6 +494,7 @@
     .unit-points-card > h3,
     .unit-table-card > h3,
     .unit-card-heading h3 {
+      font-family: var(--font-pixel);
       width: fit-content;
       max-width: 100%;
       padding: 3px 7px;
@@ -502,6 +507,7 @@
     }
 
     .unit-summary-kicker {
+      font-family: var(--font-pixel);
       text-transform: uppercase;
     }
 
@@ -551,6 +557,7 @@
     }
 
     .unit-card-tag {
+      font-family: var(--font-pixel);
       flex: 0 0 auto;
       padding: 2px 6px;
       background: var(--title);
@@ -615,6 +622,7 @@
     }
 
     .unit-stat-table thead th {
+      font-family: var(--font-pixel);
       background: transparent;
       color: var(--light);
       border-width: 2px 0;
