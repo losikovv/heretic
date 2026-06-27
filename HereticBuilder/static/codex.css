@@ -551,6 +551,71 @@
       margin-top: -1px;
     }
 
+    .unit-weapon-card {
+      background: var(--window);
+      border: 1px solid var(--mid);
+      box-shadow: var(--inset-hi);
+    }
+
+    .unit-weapon-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 9px;
+    }
+
+    .unit-weapon-chevron {
+      font-family: var(--font-pixel);
+      font-size: 10px;
+      opacity: .6;
+      flex: 0 0 auto;
+      width: 12px;
+    }
+
+    .unit-weapon-name {
+      flex: 1;
+      font-size: 13px;
+    }
+
+    .unit-weapon-type {
+      padding: 1px 5px;
+      font-size: 9px;
+      font-weight: 700;
+      font-family: var(--font-pixel);
+      color: var(--light);
+      background: var(--title);
+    }
+
+    .unit-weapon-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      padding: 0 9px 9px;
+    }
+
+    .unit-weapon-chip {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 42px;
+      padding: 3px 6px;
+      background: var(--tile);
+      border: 1px solid var(--mid);
+    }
+
+    .unit-weapon-chip i {
+      font-family: var(--font-pixel);
+      font-size: 8px;
+      opacity: .7;
+      font-style: normal;
+    }
+
+    .unit-weapon-chip b {
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
     .unit-card-heading {
       display: flex;
       align-items: start;
