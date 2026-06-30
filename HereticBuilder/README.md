@@ -17,16 +17,24 @@ Open `http://127.0.0.1:4175`.
 Build a serverless Codex export for static hosts such as GitHub Pages:
 
 ```bash
-python3 tools/build_static_site.py
+python3 tools/builder.py build
 ```
 
 For a GitHub Pages project site, pass the repository path:
 
 ```bash
-python3 tools/build_static_site.py --base-path /HereticSheets
+python3 tools/builder.py build --base-path /codex --mount-codex-at-root
 ```
 
 The generated site is written to `../dist/`.
+
+The CLI reads `../heretic.toml` by default. Named profiles are available for
+the current project Pages and organization Pages shapes:
+
+```bash
+python3 tools/builder.py build --profile project-pages
+python3 tools/builder.py build --profile org-pages
+```
 
 ## Unit Image Pixelizer
 

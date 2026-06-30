@@ -28,7 +28,7 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build static site
-        run: python3 HereticBuilder/tools/build_static_site.py --out dist --base-path "/${{ github.event.repository.name }}" --mount-codex-at-root
+        run: python3 HereticBuilder/tools/builder.py build --out dist --base-path "/${{ github.event.repository.name }}" --mount-codex-at-root
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

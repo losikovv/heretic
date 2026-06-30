@@ -6,6 +6,8 @@ import json
 import re
 import shutil
 import sys
+import tomllib
+from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
@@ -64,6 +66,26 @@ STATIC_SEARCH_METHODS = (
     "search_enhancement_items",
     "search_detachment_stratagem_items",
 )
+CONFIG_FILENAME = "heretic.toml"
+
+
+@dataclass(frozen=True)
+class StaticBuildConfig:
+    db: Path
+    out: Path
+    base_path: str
+    mount_codex_at_root: bool
+    source: Path
+    config: Path | None = None
+    profile: str | None = None
+
+
+@dataclass(frozen=True)
+class StaticBuildResult:
+    out_dir: Path
+    page_count: int
+    base_path: str
+    mount_codex_at_root: bool
 
 
 def normalize_base_path(value):
@@ -71,6 +93,75 @@ def normalize_base_path(value):
     if not path or path == "/":
         return ""
     return "/" + path.lstrip("/")
+
+
+def resolve_config_path(source_dir, config_path=None):
+    if config_path:
+        path = Path(config_path)
+        if not path.is_absolute():
+            path = source_dir / path
+        return path.resolve()
+
+    path = source_dir / CONFIG_FILENAME
+    if path.exists():
+        return path.resolve()
+    return None
+
+
+def load_toml_config(path):
+    if not path:
+        return {}
+    with path.open("rb") as config_file:
+        return tomllib.load(config_file)
+
+
+def merge_profile_config(config, profile):
+    build_config = dict(config.get("build", {}))
+    if not profile:
+        return build_config
+
+    profiles = config.get("profiles", {})
+    if profile not in profiles:
+        known = ", ".join(sorted(profiles)) or "none"
+        raise SystemExit(f"Unknown build profile '{profile}'. Available profiles: {known}")
+    build_config.update(profiles[profile])
+    return build_config
+
+
+def resolve_source_path(path):
+    return Path(path or PROJECT_ROOT).expanduser().resolve()
+
+
+def resolve_project_path(value, source_dir):
+    path = Path(str(value)).expanduser()
+    if not path.is_absolute():
+        path = source_dir / path
+    return path.resolve()
+
+
+def static_build_config_from_args(args):
+    source_dir = resolve_source_path(args.source)
+    config_path = resolve_config_path(source_dir, args.config)
+    raw_config = merge_profile_config(load_toml_config(config_path), args.profile)
+
+    db = args.db if args.db is not None else raw_config.get("db", str(DEFAULT_DB))
+    out = args.out if args.out is not None else raw_config.get("out", "dist")
+    base_path = args.base_path if args.base_path is not None else raw_config.get("base_path", "")
+    mount_codex_at_root = (
+        args.mount_codex_at_root
+        if args.mount_codex_at_root is not None
+        else bool(raw_config.get("mount_codex_at_root", False))
+    )
+
+    return StaticBuildConfig(
+        db=resolve_project_path(db, source_dir),
+        out=resolve_project_path(out, source_dir),
+        base_path=normalize_base_path(base_path),
+        mount_codex_at_root=mount_codex_at_root,
+        source=source_dir,
+        config=config_path,
+        profile=args.profile,
+    )
 
 
 def site_url(path, base_path):
@@ -148,7 +239,7 @@ def copy_dir(src, dest):
     shutil.copytree(src, dest, dirs_exist_ok=True)
 
 
-def prepare_out_dir(out_dir):
+def prepare_out_dir(out_dir, protected_dirs=()):
     resolved = out_dir.resolve()
     protected = {
         PROJECT_ROOT.resolve(),
@@ -157,6 +248,7 @@ def prepare_out_dir(out_dir):
         Path.home().resolve(),
         Path("/").resolve(),
     }
+    protected.update(Path(path).resolve() for path in protected_dirs)
     if resolved in protected:
         raise SystemExit(f"Refusing to clear protected output directory: {resolved}")
     if resolved.exists():
@@ -301,36 +393,67 @@ def write_static_pages(builder, out_dir, base_path, mount_codex_at_root=False):
     return count
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Build a static HereticBuilder site for GitHub Pages.")
-    parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite database path")
-    parser.add_argument("--out", default=str(PROJECT_ROOT / "dist"), help="Output directory")
-    parser.add_argument("--base-path", default="", help="Site base path, e.g. /HereticSheets for project Pages")
+def add_static_build_arguments(parser):
+    parser.add_argument("--source", default=str(PROJECT_ROOT), help="Project source directory")
+    parser.add_argument("--config", help=f"Build config path, defaults to {CONFIG_FILENAME} under --source")
+    parser.add_argument("--profile", help="Build profile from the config file")
+    parser.add_argument("--db", help="SQLite database path")
+    parser.add_argument("--out", help="Output directory")
+    parser.add_argument("--base-path", help="Site base path, e.g. /codex for project Pages")
     parser.add_argument(
         "--mount-codex-at-root",
         action="store_true",
+        default=None,
         help="Publish the Codex section at the static site root.",
     )
+    parser.add_argument(
+        "--no-mount-codex-at-root",
+        action="store_false",
+        dest="mount_codex_at_root",
+        help="Publish the home page at the static site root and Codex under /codex.",
+    )
+    return parser
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Build a static HereticBuilder site for GitHub Pages.")
+    add_static_build_arguments(parser)
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
-    db_path = Path(args.db).resolve()
-    if not db_path.exists():
-        raise SystemExit(f"Database does not exist: {db_path}")
+def build_static_site(config):
+    if not config.db.exists():
+        raise SystemExit(f"Database does not exist: {config.db}")
 
-    out_dir = prepare_out_dir(Path(args.out))
-    builder = HereticBuilder(db_path)
-    base_path = normalize_base_path(args.base_path)
+    out_dir = prepare_out_dir(config.out, protected_dirs=(config.source,))
+    builder = HereticBuilder(config.db)
 
     copy_assets(out_dir)
-    page_count = write_static_pages(builder, out_dir, base_path, args.mount_codex_at_root)
-    write_search_index(builder, out_dir, args.mount_codex_at_root)
+    page_count = write_static_pages(builder, out_dir, config.base_path, config.mount_codex_at_root)
+    write_search_index(builder, out_dir, config.mount_codex_at_root)
 
-    print(f"Static site: {out_dir}")
-    print(f"Pages: {page_count}")
-    print(f"Base path: {base_path or '/'}")
+    return StaticBuildResult(
+        out_dir=out_dir,
+        page_count=page_count,
+        base_path=config.base_path,
+        mount_codex_at_root=config.mount_codex_at_root,
+    )
+
+
+def build_from_args(args):
+    return build_static_site(static_build_config_from_args(args))
+
+
+def print_build_result(result):
+    print(f"Static site: {result.out_dir}")
+    print(f"Pages: {result.page_count}")
+    print(f"Base path: {result.base_path or '/'}")
+    print(f"Codex mount: {'root' if result.mount_codex_at_root else '/codex'}")
+
+
+def main():
+    result = build_from_args(parse_args())
+    print_build_result(result)
 
 
 if __name__ == "__main__":

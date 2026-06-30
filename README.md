@@ -19,7 +19,14 @@ then deploys `dist/`.
 The workflow builds `dist/` with:
 
 ```bash
-python3 HereticBuilder/tools/build_static_site.py --out dist --base-path "/<repo-name>"
+python3 HereticBuilder/tools/builder.py build --out dist --base-path "/<repo-name>" --mount-codex-at-root
+```
+
+Local defaults live in `heretic.toml`. Use the project Pages profile for the
+current `heretic-tools/codex` deployment:
+
+```bash
+python3 HereticBuilder/tools/builder.py build --profile project-pages
 ```
 
 ## Verify

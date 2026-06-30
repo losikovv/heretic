@@ -1,0 +1,13 @@
+[build]
+db = "data/heretic_db.sqlite"
+out = "dist"
+base_path = ""
+mount_codex_at_root = false
+
+[profiles.project-pages]
+base_path = "/codex"
+mount_codex_at_root = true
+
+[profiles.org-pages]
+base_path = ""
+mount_codex_at_root = false
