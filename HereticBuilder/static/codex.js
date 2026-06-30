@@ -29,14 +29,22 @@
       if (!Array.isArray(value)) {
         return [];
       }
-      return value.map(sameOriginHref).filter(Boolean);
+      return value.map((item) => {
+        return {
+          from: sameOriginHref(item?.from),
+          to: sameOriginHref(item?.to),
+        };
+      }).filter((item) => item.from && item.to);
     } catch (_error) {
       return [];
     }
   }
 
   function setRuleReturnStack(stack) {
-    const normalized = stack.map(sameOriginHref).filter(Boolean);
+    const normalized = stack.map((item) => ({
+      from: sameOriginHref(item?.from),
+      to: sameOriginHref(item?.to),
+    })).filter((item) => item.from && item.to);
     if (normalized.length) {
       window.sessionStorage.setItem(ruleReturnStorageKey, JSON.stringify(normalized));
       return;
@@ -44,30 +52,38 @@
     window.sessionStorage.removeItem(ruleReturnStorageKey);
   }
 
+  function isCoreRulesReferenceHref(href) {
+    return (
+      href.startsWith("/codex/core-rules/rule/")
+      || href.startsWith("/codex/core-rules/section/")
+    );
+  }
+
   function rememberRuleReturnHref(event) {
     const href = currentHref();
     const target = sameOriginHref(event?.currentTarget?.getAttribute("href"));
     const stack = ruleReturnStack();
-    if (!target || target === href) {
+    if (!target || target === href || !isCoreRulesReferenceHref(target)) {
       return;
     }
-    if (stack[stack.length - 1] !== href) {
-      stack.push(href);
+    const last = stack[stack.length - 1];
+    if (!last || last.from !== href || last.to !== target) {
+      stack.push({ from: href, to: target });
     }
     setRuleReturnStack(stack);
   }
 
   function ruleReturnHref() {
-    if (!page?.classList.contains("core-rule-page")) {
+    const current = currentHref();
+    if (!page || !isCoreRulesReferenceHref(current)) {
       return "";
     }
-    const current = currentHref();
     const stack = ruleReturnStack();
     while (stack.length) {
-      const href = stack.pop();
-      if (href && href !== current) {
+      const item = stack.pop();
+      if (item.from !== current && item.to === current) {
         setRuleReturnStack(stack);
-        return href;
+        return item.from;
       }
     }
     setRuleReturnStack(stack);
@@ -105,7 +121,7 @@
 
   document.querySelectorAll("a[href]").forEach((link) => {
     const href = sameOriginHref(link.getAttribute("href"));
-    if (!href.startsWith("/codex/core-rules/rule/")) {
+    if (!isCoreRulesReferenceHref(href)) {
       return;
     }
     link.addEventListener("click", rememberRuleReturnHref);

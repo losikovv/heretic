@@ -134,10 +134,16 @@ class Handler(BaseHTTPRequestHandler):
                     unquote(parsed.path.removeprefix("/codex/core-rules/section/")),
                 ))
             elif parsed.path.startswith("/codex/core-rules/rule/"):
-                self.send_html(render_core_rule_page(
-                    self.heretic_builder,
-                    unquote(parsed.path.removeprefix("/codex/core-rules/rule/")),
-                ))
+                ref = unquote(parsed.path.removeprefix("/codex/core-rules/rule/"))
+                # Major rule references are section landing pages with sub-rule buttons.
+                import re as _re
+                _m = _re.fullmatch(r"(\d{1,2})(?:\.00)?", ref.strip())
+                if _m:
+                    self.send_response(302)
+                    self.send_header("Location", f"/codex/core-rules/section/{int(_m.group(1)):02d}")
+                    self.end_headers()
+                else:
+                    self.send_html(render_core_rule_page(self.heretic_builder, ref))
             elif parsed.path.startswith("/codex/faction/"):
                 self.send_faction_codex_page(parsed.path)
             elif parsed.path == "/codex/imperium":

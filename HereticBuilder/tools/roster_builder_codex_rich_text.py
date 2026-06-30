@@ -23,19 +23,84 @@ def core_rule_href(reference):
     normalized = normalize_rule_reference_code(reference)
     if not normalized:
         return ""
+    major, minor = normalized.split(".")
+    if minor == "00":
+        return f"/codex/core-rules/section/{major}"
     return f"/codex/core-rules/rule/{normalized}"
+
+
+# Sentinels carry semantics through escape_html (which only touches & < >) so they can be
+# turned back into real HTML in apply_rule_inline_markup, after escaping.
+_FOOTNOTE = ""
+_U_OPEN = ""
+_U_CLOSE = ""
+
+# HTML tag names we understand; anything else inside <...> is treated as literal text.
+_KNOWN_TAG = r"(?:appref|b|strong|i|em|k|u|br|ul|ol|li|table|tr|td|th|tbody|thead|sup|sub)"
+
+# Inline emphasis tags that must be balanced; source data sometimes leaves them open.
+_INLINE_EMPHASIS = ("b", "strong", "i", "em", "u", "k")
+
+
+def balance_inline_tags(text):
+    """Close unclosed inline emphasis tags at paragraph end and drop stray closers,
+    so malformed source (e.g. an <i> example that is never closed) still renders."""
+    out = []
+    for block in re.split(r"(\n\n+)", text):
+        if block.startswith("\n"):
+            out.append(block)
+            continue
+        stack = []
+
+        def repl(match):
+            closing, name = match.group(1), match.group(2).lower()
+            if name not in _INLINE_EMPHASIS:
+                return match.group(0)
+            if not closing:
+                stack.append(name)
+                return match.group(0)
+            if name not in stack:
+                # A closer with no opener is almost always a mistyped opener in this data
+                # (e.g. 'or</b>fall-back</b>' meaning 'or <b>fall-back</b>') -> treat as open.
+                stack.append(name)
+                return f"<{name}>"
+            closers = ""
+            while stack:
+                top = stack.pop()
+                closers += f"</{top}>"
+                if top == name:
+                    break
+            return closers
+
+        block = re.sub(r"<(/?)([a-zA-Z][\w]*)\s*>", repl, block)
+        while stack:
+            block += f"</{stack.pop()}>"
+        out.append(block)
+    return "".join(out)
 
 
 def normalize_rule_text(value):
     text = html.unescape(str(value or "").replace("\r\n", "\n").replace("\r", "\n"))
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
-    text = re.sub(r"<(b|strong|k|u)>\s*</\1>", "", text, flags=re.IGNORECASE)
+    # Repair malformed tags such as '<bodyguard</b>' -> '<b>bodyguard</b>'.
+    text = re.sub(r"<([a-zA-Z][\w/]*)</(b|strong|i|em|u|k)>", r"<\2>\1</\2>", text, flags=re.IGNORECASE)
+    # Balance unclosed/stray inline emphasis tags before converting them to markers.
+    text = balance_inline_tags(text)
+    # A literal '*' glued to an italic tag is a footnote marker, not emphasis -> sentinel.
+    text = re.sub(r"(?<!\*)\*(?=</?(?:i|em)>)", _FOOTNOTE, text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<=</i>)\*(?!\*)", _FOOTNOTE, text, flags=re.IGNORECASE)
+    text = re.sub(r"(?<=</em>)\*(?!\*)", _FOOTNOTE, text, flags=re.IGNORECASE)
+    text = re.sub(r"<(b|strong|k|u|i|em)>\s*</\1>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<u>", _U_OPEN, text, flags=re.IGNORECASE)
+    text = re.sub(r"</u>", _U_CLOSE, text, flags=re.IGNORECASE)
     text = re.sub(r"</?(?:i|em)>", "*", text, flags=re.IGNORECASE)
-    text = re.sub(r"</?(?:b|strong|k|u)>", "**", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?(?:b|strong|k)>", "**", text, flags=re.IGNORECASE)
     text = re.sub(r"<ul[^>]*>\s*<li[^>]*>", "\n■ ", text, flags=re.IGNORECASE)
     text = re.sub(r"</li>\s*<li[^>]*>", "\n■ ", text, flags=re.IGNORECASE)
     text = re.sub(r"</li>\s*</ul>", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", "", text)
+    # Placeholder text like '<move type>' is not a tag -> keep it as italic inner text.
+    text = re.sub(rf"<(?!/?{_KNOWN_TAG}[\s/>])([a-zA-Z][^<>]*)>", r"*\1*", text)
+    text = re.sub(r"<[^>]+>", "", text)   # strip any remaining complete tags
     return text.strip()
 
 
@@ -91,10 +156,16 @@ def apply_rule_inline_markup(text, current_rule_reference=None):
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     text = re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", r"<em>\1</em>", text)
     text = re.sub(
-        r"\(([^()]*(?:\d{1,2}(?:\.\d{1,2}){1,2})[^()]*)\)",
+        r"\((\s*\d{1,2}(?:\.\d{1,2})?\s*|[^()]*(?:\d{1,2}(?:\.\d{1,2}){1,2})[^()]*)\)",
         render_parenthetical_rule_references,
         text,
     )
+    # A lone '*' left after emphasis matching is a footnote marker. Skip '**' sequences and
+    # quoted characteristic values such as '*' (a stat meaning "no value").
+    text = re.sub(r"(?<![*‘'\"])\*(?![*’'\"])", _FOOTNOTE, text)
+    # Resolve sentinels to real HTML (done last, after markdown/link processing).
+    text = text.replace(_FOOTNOTE, "<sup>*</sup>")
+    text = text.replace(_U_OPEN, "<u>").replace(_U_CLOSE, "</u>")
     return text
 
 
