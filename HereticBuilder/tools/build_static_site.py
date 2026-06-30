@@ -79,9 +79,18 @@ def site_url(path, base_path):
     return f"{base_path}{path}"
 
 
-def inject_static_config(html, base_path):
+def codex_root_site_url(path, base_path):
+    if path == "/codex":
+        return site_url("/", base_path)
+    if path.startswith("/codex/"):
+        return site_url(path.removeprefix("/codex"), base_path)
+    return site_url(path, base_path)
+
+
+def inject_static_config(html, base_path, mount_codex_at_root=False):
+    runtime_base_path = "" if mount_codex_at_root else base_path
     config = (
-        f'  <meta name="heretic-base-path" content="{escape(base_path, quote=True)}">\n'
+        f'  <meta name="heretic-base-path" content="{escape(runtime_base_path, quote=True)}">\n'
         f'  <meta name="heretic-search-index" content="{escape(site_url("/search-index.json", base_path), quote=True)}">'
     )
     if "</head>" in html:
@@ -89,7 +98,11 @@ def inject_static_config(html, base_path):
 
     def replace_attr(match):
         prefix, url, suffix = match.groups()
-        return f"{prefix}{escape(site_url(url, base_path), quote=True)}{suffix}"
+        if mount_codex_at_root:
+            url = codex_root_site_url(url, base_path)
+        else:
+            url = site_url(url, base_path)
+        return f"{prefix}{escape(url, quote=True)}{suffix}"
 
     html = re.sub(
         r'((?:href|src|data-href|data-up-href)=["\'])(/[^"\']*)(["\'])',
@@ -102,17 +115,27 @@ def inject_static_config(html, base_path):
     return html
 
 
-def route_to_file(out_dir, route):
+def codex_root_route(route):
+    if route == "/codex":
+        return "/"
+    if route.startswith("/codex/"):
+        return route.removeprefix("/codex")
+    return route
+
+
+def route_to_file(out_dir, route, mount_codex_at_root=False):
+    if mount_codex_at_root:
+        route = codex_root_route(route)
     path = route.split("?", 1)[0].split("#", 1)[0].strip("/")
     if not path:
         return out_dir / "index.html"
     return out_dir / path / "index.html"
 
 
-def write_route(out_dir, route, html, base_path):
-    target = route_to_file(out_dir, route)
+def write_route(out_dir, route, html, base_path, mount_codex_at_root=False):
+    target = route_to_file(out_dir, route, mount_codex_at_root)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(inject_static_config(html, base_path), encoding="utf-8")
+    target.write_text(inject_static_config(html, base_path, mount_codex_at_root), encoding="utf-8")
 
 
 def copy_dir(src, dest):
@@ -229,15 +252,16 @@ def datasheet_routes(builder):
     return routes
 
 
-def write_static_pages(builder, out_dir, base_path):
+def write_static_pages(builder, out_dir, base_path, mount_codex_at_root=False):
     count = 0
 
     def write(route, html):
         nonlocal count
-        write_route(out_dir, route, html, base_path)
+        write_route(out_dir, route, html, base_path, mount_codex_at_root)
         count += 1
 
-    write("/", render_template("home.html"))
+    if not mount_codex_at_root:
+        write("/", render_template("home.html"))
     write("/codex", render_codex_root_page())
     write("/codex/core-rules", render_core_rules_page())
     write("/codex/core-rules/rules", render_core_rules_rules_page(builder))
@@ -276,6 +300,11 @@ def parse_args():
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite database path")
     parser.add_argument("--out", default=str(PROJECT_ROOT / "dist"), help="Output directory")
     parser.add_argument("--base-path", default="", help="Site base path, e.g. /HereticSheets for project Pages")
+    parser.add_argument(
+        "--mount-codex-at-root",
+        action="store_true",
+        help="Publish the Codex section at the static site root.",
+    )
     return parser.parse_args()
 
 
@@ -290,7 +319,7 @@ def main():
     base_path = normalize_base_path(args.base_path)
 
     copy_assets(out_dir)
-    page_count = write_static_pages(builder, out_dir, base_path)
+    page_count = write_static_pages(builder, out_dir, base_path, args.mount_codex_at_root)
     write_search_index(builder, out_dir)
 
     print(f"Static site: {out_dir}")
