@@ -19,9 +19,7 @@ if str(TOOLS_ROOT) not in sys.path:
 
 from roster_builder_assets import (  # noqa: E402
     DEFAULT_DB,
-    FACTION_IMAGE_ROOT,
     STATIC_ROOT,
-    UNIT_IMAGE_ROOT,
 )
 from roster_builder_codex import (  # noqa: E402
     CORE_RULES_PUBLICATION_ID,
@@ -139,8 +137,6 @@ def prepare_out_dir(out_dir):
 def copy_assets(out_dir):
     copy_dir(STATIC_ROOT, out_dir / "static")
     copy_dir(HERETIC_BUILDER_ROOT / "assets", out_dir / "assets")
-    copy_dir(FACTION_IMAGE_ROOT, out_dir / "assets" / "faction-images")
-    copy_dir(UNIT_IMAGE_ROOT, out_dir / "assets" / "unit-images")
     (out_dir / ".nojekyll").write_text("", encoding="utf-8")
 
 

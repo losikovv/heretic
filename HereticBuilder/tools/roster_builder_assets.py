@@ -6,10 +6,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = PROJECT_ROOT / "data" / "heretic_db.sqlite"
 HERETIC_BUILDER_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = HERETIC_BUILDER_ROOT / "static"
-FACTION_IMAGE_ROOT = PROJECT_ROOT / "generated" / "faction_images_90s" / "images"
-FACTION_IMAGE_MANIFEST = PROJECT_ROOT / "generated" / "faction_images_90s" / "manifest.csv"
-UNIT_IMAGE_ROOT = PROJECT_ROOT / "generated" / "unit_images_90s" / "images"
-UNIT_IMAGE_MANIFEST = PROJECT_ROOT / "generated" / "unit_images_90s" / "manifest.csv"
+ASSET_ROOT = HERETIC_BUILDER_ROOT / "assets"
+FACTION_IMAGE_ROOT = ASSET_ROOT / "faction-images"
+FACTION_IMAGE_MANIFEST = FACTION_IMAGE_ROOT / "manifest.csv"
+UNIT_IMAGE_ROOT = ASSET_ROOT / "unit-images"
+UNIT_IMAGE_MANIFEST = UNIT_IMAGE_ROOT / "manifest.csv"
 
 ICON_ASSETS = {
     "/assets/icons/codex.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "codex.png",

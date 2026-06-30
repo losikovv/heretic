@@ -44,7 +44,11 @@ python3 tools/unit_image_pixelizer.py --print-urls
 python3 tools/unit_image_pixelizer.py --dry-run --kind row --limit 10
 ```
 
-The script writes generated files under `../generated/unit_images_90s/`.
+The app serves the checked-in production image pack from
+`assets/unit-images/` and `assets/faction-images/`. The pixelizer writes
+intermediate generated files under `../generated/unit_images_90s/`; copy the
+selected PNGs and `manifest.csv` into `assets/unit-images/` when refreshing the
+production pack.
 It requires Pillow for image processing:
 
 ```bash
