@@ -18,6 +18,7 @@ ICON_ASSETS = {
     "/assets/icons/missions.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "missions.png",
     "/assets/icons/battler.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "battler.png",
     "/assets/icons/start.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "start.png",
+    "/assets/icons/boosty.png": HERETIC_BUILDER_ROOT / "assets" / "icons" / "boosty.png",
 }
 
 

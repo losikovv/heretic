@@ -56,6 +56,7 @@ def detachment_href(faction, detachment, detachment_slug=None):
 
 
 CORE_RULES_PUBLICATION_ID = "4cdf7a87-0914-49e8-b5df-b9f8be4d13c6"
+CORE_RULES_IMAGE = {"filename": "core-rules__4cdf7a87__roster-header.png"}
 FAQ_RELATION_COLUMNS = {
     "datasheetId",
     "armyRuleId",
@@ -98,6 +99,57 @@ def render_window_title(value):
     return "<br>".join(escape_html(line) for line in str(value).splitlines())
 
 
+def breadcrumb_label_from_segment(segment):
+    labels = {
+        "adeptus-astartes": "Adeptus Astartes",
+        "army-rule": "Army Rule",
+        "chaos": "Chaos",
+        "core-rules": "Core Rules",
+        "datasheets": "Data Sheets",
+        "detachment": "Detachment",
+        "detachments": "Detachments",
+        "faq": "FAQ",
+        "imperium": "Imperium",
+        "rules": "Rules",
+        "section": "Section",
+        "stratagems": "Stratagems",
+        "xenos": "Xenos",
+    }
+    if segment in labels:
+        return labels[segment]
+    return " ".join(part.capitalize() for part in segment.split("-") if part)
+
+
+def default_breadcrumb_items(back_href):
+    items = [{"label": "HereticTools", "href": "/"}]
+    path = (back_href or "/").split("?", 1)[0].split("#", 1)[0].strip("/")
+    segments = [segment for segment in path.split("/") if segment]
+
+    if segments[:1] == ["codex"]:
+        items.append({"label": "Codex", "href": "/codex"})
+        href_segments = ["codex"]
+        for segment in segments[1:]:
+            href_segments.append(segment)
+            if segment == "faction":
+                continue
+            label = breadcrumb_label_from_segment(segment)
+            if not label:
+                continue
+            items.append({"label": label, "href": f'/{"/".join(href_segments)}'})
+    return items
+
+
+def render_breadcrumbs(back_href, breadcrumb_items=None):
+    items = breadcrumb_items if breadcrumb_items is not None else default_breadcrumb_items(back_href)
+    parts = []
+    for index, item in enumerate(items):
+        label = escape_html(item["label"])
+        if index:
+            parts.append('        <span class="breadcrumb-separator" aria-hidden="true">/</span>')
+        parts.append(f'        <a class="breadcrumb-menu-item" href="{escape_attr(item["href"])}">{label}</a>')
+    return '      <nav class="breadcrumb-menu" aria-label="Breadcrumb">\n' + "\n".join(parts) + "\n      </nav>"
+
+
 def render_launcher(button):
     href_attr = f' data-href="{escape_attr(button["href"])}"' if button.get("href") else ""
     classes = ["launcher"]
@@ -138,6 +190,7 @@ def render_codex_page(
     back_label,
     hero_image=None,
     hero_image_url=None,
+    breadcrumb_items=None,
 ):
     if len(buttons) > 5:
         page_class = f"{page_class} many-buttons-page"
@@ -149,6 +202,7 @@ def render_codex_page(
         page_class=escape_attr(page_class),
         title=escape_attr(title),
         window_title=render_window_title(window_title),
+        breadcrumb_html=render_breadcrumbs(back_href, breadcrumb_items),
         grid_label=escape_attr(grid_label),
         buttons_html="\n".join(render_launcher(button) for button in buttons),
         back_href=escape_attr(back_href),
@@ -167,6 +221,7 @@ def render_codex_content_page(
     back_label,
     hero_image=None,
     hero_image_url=None,
+    breadcrumb_items=None,
 ):
     return render_template(
         "codex_content.html",
@@ -175,6 +230,7 @@ def render_codex_content_page(
         page_class=escape_attr(page_class),
         title=escape_attr(title),
         window_title=render_window_title(window_title),
+        breadcrumb_html=render_breadcrumbs(back_href, breadcrumb_items),
         content_html=content_html,
         back_href=escape_attr(back_href),
         back_label=escape_attr(back_label),
@@ -192,10 +248,31 @@ def render_codex_root_page():
         back_href="/",
         back_label="Back to HereticTools",
         buttons=[
-            {"label": "Core Rules", "tag": "Reference", "route": "core-rules", "href": "/codex/core-rules"},
-            {"label": "Imperium", "route": "imperium", "href": "/codex/imperium"},
-            {"label": "Chaos", "route": "chaos", "href": "/codex/chaos"},
-            {"label": "Xenos", "route": "xenos", "href": "/codex/xenos"},
+            {
+                "label": "Core Rules",
+                "tag": "Reference",
+                "route": "core-rules",
+                "href": "/codex/core-rules",
+                "image": CORE_RULES_IMAGE,
+            },
+            {
+                "label": "Imperium",
+                "route": "imperium",
+                "href": "/codex/imperium",
+                "image": find_faction_image("Agents of the Imperium", "2f81671f-3164-4ab0-93c0-4a99746b5996"),
+            },
+            {
+                "label": "Chaos",
+                "route": "chaos",
+                "href": "/codex/chaos",
+                "image": find_faction_image("Legiones Daemonica", "40a70c91-675a-4ac5-aa97-daedb9cb6f11"),
+            },
+            {
+                "label": "Xenos",
+                "route": "xenos",
+                "href": "/codex/xenos",
+                "image": find_faction_image("Orks", "0b30f1e3-1e5c-4823-afa1-07951433a270"),
+            },
         ],
     )
 
@@ -203,7 +280,7 @@ def render_codex_root_page():
 def render_core_rules_page():
     return render_codex_page(
         title="Core Rules",
-        window_title="CoreRules",
+        window_title="Core Rules",
         task_title="Core Rules",
         page_class="core-rules-page",
         grid_label="Core Rules sections",
@@ -214,6 +291,7 @@ def render_core_rules_page():
             {"label": "Stratagems", "tag": "Tactics", "route": "stratagems", "href": "/codex/core-rules/stratagems"},
             {"label": "FAQ", "tag": "Updates", "route": "faq", "href": "/codex/core-rules/faq"},
         ],
+        hero_image=CORE_RULES_IMAGE,
     )
 
 
@@ -337,7 +415,7 @@ def render_core_rules_rules_page(heretic_builder):
     content_html = f'<div class="list-grid core-rules-list-grid">{items_html}</div>'
     return render_codex_content_page(
         title="Core Rules",
-        window_title="Core Rules",
+        window_title="Rules",
         task_title="Core Rules / Rules",
         page_class="faction-detail-page core-rules-list-page",
         content_html=content_html,
@@ -540,7 +618,7 @@ def related_faqs_for_core_rule(conn, rule_container_id, reference):
 
 def render_core_faq_page(heretic_builder):
     faqs = core_rule_faqs(heretic_builder)
-    content_html = render_faq_update_sections(faqs) or '<div class="empty-state">No FAQ or errata found.</div>'
+    content_html = render_faq_section("FAQ", faqs) or '<div class="empty-state">No FAQ found.</div>'
     return render_codex_content_page(
         title="Core Rules FAQ",
         window_title="Core Rules\nFAQ",
@@ -560,6 +638,7 @@ def core_rule_by_reference(heretic_builder, reference):
         rule = conn.execute(
             """
             select rc.id, rc.title, rc.subtitle, rc.containerType, rc.behaviourTypeId, rc.stratagemId
+                   , rs.name as sectionName
             from rule_container rc
             join rule_section rs on rs.id = rc.ruleSectionId
             where rc.subtitle = ?
@@ -660,6 +739,15 @@ def render_core_rule_page(heretic_builder, reference):
     current_rule_reference = rule["subtitle"]
     disp = display_subtitle(rule["subtitle"])
     heading = f'{disp} {rule["title"]}' if disp else rule["title"]
+    section_code = normalize_rule_reference_code(rule["subtitle"]).split(".")[0]
+    section_href = f"/codex/core-rules/section/{section_code}"
+    breadcrumb_items = [
+        {"label": "HereticTools", "href": "/"},
+        {"label": "Codex", "href": "/codex"},
+        {"label": "Core Rules", "href": "/codex/core-rules"},
+        {"label": "Rules", "href": "/codex/core-rules/rules"},
+        {"label": rule["sectionName"], "href": section_href},
+    ]
     # The rule number + title are already in the page header, so no heading card here.
     sections = []
     sections.extend(render_rule_component(component, current_rule_reference) for component in rule["components"])
@@ -684,8 +772,9 @@ def render_core_rule_page(heretic_builder, reference):
         task_title=f"Core Rules / {heading}",
         page_class="core-rule-page",
         content_html=content_html,
-        back_href="/codex/core-rules",
-        back_label="Back to Core Rules",
+        back_href=section_href,
+        back_label=f'Back to {rule["sectionName"]}',
+        breadcrumb_items=breadcrumb_items,
     )
 
 
@@ -712,6 +801,8 @@ FACTION_GROUPS = {
     "imperium": {
         "title": "Imperium",
         "window_title": "Imperium",
+        "hero_faction_id": "2f81671f-3164-4ab0-93c0-4a99746b5996",
+        "hero_faction_name": "Agents of the Imperium",
         "ids": {
             "aee1b46d-3461-4d5d-a612-0efd05dd843d",
             "6cc4ee5e-3bc6-4142-8147-2e1a9fb6e82c",
@@ -725,6 +816,8 @@ FACTION_GROUPS = {
     "chaos": {
         "title": "Chaos",
         "window_title": "Chaos",
+        "hero_faction_id": "40a70c91-675a-4ac5-aa97-daedb9cb6f11",
+        "hero_faction_name": "Legiones Daemonica",
         "ids": {
             "2e79f9cd-94dc-48ca-bddf-6d5e877609c5",
             "19176137-2faa-4d6e-adb4-2572510032b7",
@@ -739,6 +832,8 @@ FACTION_GROUPS = {
     "xenos": {
         "title": "Xenos",
         "window_title": "Xenos",
+        "hero_faction_id": "0b30f1e3-1e5c-4823-afa1-07951433a270",
+        "hero_faction_name": "Orks",
         "ids": {
             "2cb72f92-bfc7-4d2c-a183-b2bff6b26bfc",
             "43bbfe97-4c14-47be-be2b-90de3e6756b1",
@@ -783,6 +878,7 @@ def render_faction_group_page(heretic_builder, group_key):
         grid_label="Faction sections",
         back_href="/codex",
         back_label="Back to Codex",
+        hero_image=find_faction_image(group["hero_faction_name"], group["hero_faction_id"]),
         buttons=buttons,
     )
 

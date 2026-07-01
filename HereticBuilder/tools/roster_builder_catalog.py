@@ -51,7 +51,16 @@ class RosterCatalogMixin:
                 left join force_disposition fd on fd.id = dfd.forceDispositionId
                 where dfk.factionKeywordId = ?
                   and (? or d.isCombatPatrol = 0)
-                order by d.isCombatPatrol, d.displayOrder, lower(d.name)
+                order by case fd.name
+                    when 'Take and Hold' then 1
+                    when 'Purge the Foe' then 2
+                    when 'Reconnaissance' then 3
+                    when 'Disruption' then 4
+                    when 'Priority Assets' then 5
+                    else 99
+                  end,
+                  lower(d.name),
+                  d.id
                 """,
                 [faction_id, faction_id, 1 if include_combat_patrol else 0],
             ).fetchall()
